@@ -1,0 +1,16 @@
+node_modules
+dist
+build
+*.log
+.env
+.env.local
+.DS_Store
+.vite
+# SQLite data files (runtime state, not source)
+server/data
+server/*.db
+server/*.db-shm
+server/*.db-wal
+server/*.sqlite
+server/*.sqlite-shm
+server/*.sqlite-wal
