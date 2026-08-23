@@ -46,4 +46,14 @@ app.put('/api/admin/config', requireAdmin, (req, res) => { const body = req.body
 app.use(express.static(path.join(__dirname, 'dist'), { maxAge: '1d', index: false }));
 app.get('*', (req, res, next) => { if (req.path.startsWith('/api/')) return next(); res.sendFile(path.join(__dirname, 'dist', 'index.html')); });
 app.use((_req, res) => res.status(404).json({ error: 'Not found' }));
-app.listen(port, '0.0.0.0', () => console.log(`Mudrexx Earn is listening on 0.0.0.0:${port}`));
+const server = app.listen(port, '0.0.0.0', () => console.log(`Mudrexx Earn is listening on 0.0.0.0:${port}`));
+
+// Container platforms stop old replicas with SIGTERM during redeploys. Close the listener
+// cleanly so the process exits successfully instead of leaving npm to report a lifecycle error.
+function shutdown(signal) {
+  console.log(`Received ${signal}; closing Mudrexx Earn gracefully.`);
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(0), 8_000).unref();
+}
+process.once('SIGTERM', () => shutdown('SIGTERM'));
+process.once('SIGINT', () => shutdown('SIGINT'));
