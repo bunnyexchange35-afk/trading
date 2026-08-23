@@ -16,4 +16,6 @@ RUN npm ci --omit=dev
 COPY server.mjs ./
 COPY --from=build /app/dist ./dist
 EXPOSE 8080
-CMD ["npm", "start"]
+# Run Node directly as PID 1 so deployment SIGTERM is handled as a normal graceful shutdown,
+# rather than being reported by npm as a failed lifecycle script.
+CMD ["node", "server.mjs"]

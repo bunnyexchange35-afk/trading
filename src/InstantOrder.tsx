@@ -128,7 +128,8 @@ function LiveChart({ symbol, interval, price, change, onInterval }: { symbol: st
 }
 
 function AviatorGame({ onResult }: { onResult: (value: ResultPopup) => void }) {
-  const [credits, setCredits] = useState(10000);
+  const { demoCredits: credits, changeDemoCredits, notify } = useApp();
+  const [thresholdRewarded, setThresholdRewarded] = useState(() => localStorage.getItem('mudrexx-threshold-rewarded') === '1');
   const [bet, setBet] = useState('250');
   const [state, setState] = useState<'idle' | 'flying' | 'crashed' | 'cashed'>('idle');
   const [multiplier, setMultiplier] = useState(1);
@@ -141,7 +142,7 @@ function AviatorGame({ onResult }: { onResult: (value: ResultPopup) => void }) {
   useEffect(() => stopTimer, []);
   const start = () => {
     if (state === 'flying' || wager < 10 || wager > credits) return;
-    setCredits((value) => value - wager);
+    changeDemoCredits(-wager);
     setState('flying'); setMultiplier(1);
     target.current = Number((1.05 + Math.pow(Math.random(), 2.1) * 9.5).toFixed(2));
     let elapsed = 0;
@@ -160,14 +161,15 @@ function AviatorGame({ onResult }: { onResult: (value: ResultPopup) => void }) {
     if (state !== 'flying') return;
     stopTimer();
     const reward = wager * multiplier;
-    setCredits((value) => value + reward); setState('cashed');
+    changeDemoCredits(reward); setState('cashed');
+    if (!thresholdRewarded && credits - wager + reward >= 5000) { changeDemoCredits(1000); setThresholdRewarded(true); localStorage.setItem('mudrexx-threshold-rewarded', '1'); notify('1,000-credit milestone reward', 'You crossed the 5,000-credit Flight Lab threshold. Demo credits have no cash value.'); }
     setHistory((items) => [multiplier, ...items].slice(0, 8));
     onResult({ kind: 'win', title: `Cashed out at ${multiplier.toFixed(2)}×`, copy: `You earned ${Math.round(reward - wager).toLocaleString()} practice credits this round.`, amount: reward });
   };
 
   const progress = Math.min(87, Math.max(8, (multiplier - 1) * 22));
   return <section className="aviator-section section-pad"><div className="container">
-    <div className="aviator-heading"><div><span className="eyebrow">Practice & play</span><h2>Flight Lab</h2><p>Test your timing in a transparent demo-credit multiplier game.</p></div><div className="demo-wallet"><span><Wallet /></span><div><small>DEMO WALLET</small><strong>{Math.floor(credits).toLocaleString()} credits</strong></div><button onClick={() => setCredits(10000)}><RotateCcw /> Reset</button></div></div>
+    <div className="aviator-heading"><div><span className="eyebrow">Practice & play</span><h2>Flight Lab</h2><p>Test your timing in a transparent demo-credit multiplier game. Reach 5,000 credits to unlock a one-time 1,000-credit demo reward.</p></div><div className="demo-wallet"><span><Wallet /></span><div><small>DEMO WALLET</small><strong>{Math.floor(credits).toLocaleString()} credits</strong></div><button onClick={() => { localStorage.removeItem('mudrexx-demo-credits'); window.location.reload(); }}><RotateCcw /> Reset</button></div></div>
     <div className="aviator-shell">
       <div className={`flight-stage flight-${state}`}>
         <div className="flight-grid"/><div className="cloud cloud-a"/><div className="cloud cloud-b"/>
