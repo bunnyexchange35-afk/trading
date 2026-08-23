@@ -14,6 +14,8 @@ type AppState = {
   notices: Notice[];
   notify: (title: string, message: string, tone?: Notice['tone']) => void;
   dismiss: (id: number) => void;
+  demoCredits: number;
+  changeDemoCredits: (amount: number) => void;
 };
 
 const AppContext = createContext<AppState | null>(null);
@@ -25,6 +27,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   });
   const [authMode, setAuthMode] = useState<AuthMode | null>(null);
   const [notices, setNotices] = useState<Notice[]>([]);
+  const [demoCredits, setDemoCredits] = useState(() => Number(localStorage.getItem('mudrexx-demo-credits') || 4000));
 
   const authenticate = useCallback((next: User) => {
     setUser(next);
@@ -40,11 +43,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setNotices((current) => [...current, { id, title, message, tone }]);
     window.setTimeout(() => setNotices((current) => current.filter((item) => item.id !== id)), 5000);
   }, []);
+  const changeDemoCredits = useCallback((amount: number) => {
+    setDemoCredits((current) => { const next = Math.max(0, Math.floor(current + amount)); localStorage.setItem('mudrexx-demo-credits', String(next)); return next; });
+  }, []);
   const dismiss = useCallback((id: number) => setNotices((current) => current.filter((item) => item.id !== id)), []);
 
   const value = useMemo<AppState>(() => ({
-    user, authMode, openAuth: setAuthMode, closeAuth: () => setAuthMode(null), authenticate, signOut, notices, notify, dismiss,
-  }), [user, authMode, authenticate, signOut, notices, notify, dismiss]);
+    user, authMode, openAuth: setAuthMode, closeAuth: () => setAuthMode(null), authenticate, signOut, notices, notify, dismiss, demoCredits, changeDemoCredits,
+  }), [user, authMode, authenticate, signOut, notices, notify, dismiss, demoCredits, changeDemoCredits]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }

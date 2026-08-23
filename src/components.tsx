@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'rea
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import {
   ArrowRight, BadgeCheck, CheckCircle2, ChevronDown, CircleHelp, Clock3, ExternalLink,
-  Headphones, LogOut, Menu, MessageCircle, Settings, ShieldCheck, Sparkles, User, Users,
+  Headphones, Languages, LogOut, Menu, MessageCircle, Settings, ShieldCheck, Sparkles, User, Users,
   Wallet, X, Zap,
 } from 'lucide-react';
 import { useApp } from './app-context';
@@ -32,6 +32,8 @@ const links = [
 
 export function SiteHeader() {
   const [menu, setMenu] = useState(false);
+  const [language, setLanguage] = useState('English');
+  const [currency, setCurrency] = useState('INR');
   const [profile, setProfile] = useState(false);
   const location = useLocation();
   const profileRef = useRef<HTMLDivElement>(null);
@@ -65,6 +67,8 @@ export function SiteHeader() {
             </div>
           </nav>
           <div className="header-actions">
+            <label className="display-select language-select" aria-label="Language"><Languages size={15} /><select value={language} onChange={(event) => setLanguage(event.target.value)}><option>English</option><option>हिन्दी</option><option>বাংলা</option><option>தமிழ்</option><option>తెలుగు</option><option>मराठी</option></select></label>
+            <label className="display-select currency-select" aria-label="Display currency"><select value={currency} onChange={(event) => setCurrency(event.target.value)}><option>INR</option><option>USDT</option></select></label>
             {!user && <button className="text-button signin-button" onClick={() => openAuth('signin')}>Sign in</button>}
             {!user && <button className="btn btn-dark signup-button" onClick={() => openAuth('signup')}>Get started <ArrowRight size={15} /></button>}
             <div className="profile-wrap" ref={profileRef}>
@@ -96,6 +100,10 @@ export function SiteHeader() {
 
 function ProfileLink({ to, icon, label }: { to: string; icon: ReactNode; label: string }) {
   return <Link className="profile-row" to={to}>{icon}<span>{label}</span><ArrowRight size={14} /></Link>;
+}
+
+export function MobileDock() {
+  return <nav className="mobile-dock" aria-label="Quick mobile navigation"><Link to="/">Home</Link><Link to="/market">Markets</Link><Link to="/instant-order" className="speed-mascot" aria-label="Open Instant Order"><span>⚡</span><b>Speed</b></Link><Link to="/community">Community</Link><Link to="/wallet">Wallet</Link></nav>;
 }
 
 export function SiteFooter() {

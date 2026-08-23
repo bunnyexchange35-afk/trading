@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { AppProvider } from './app-context';
 import { MarketProvider } from './market-context';
-import { AuthModal, ContactButton, EntryExperience, SiteFooter, SiteHeader, ToastStack } from './components';
+import { AuthModal, ContactButton, EntryExperience, MobileDock, SiteFooter, SiteHeader, ToastStack } from './components';
 import Home from './Home';
 import Market from './Market';
 import InstantOrder from './InstantOrder';
@@ -32,6 +32,7 @@ function AppRoutes() {
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
     <SiteFooter />
+    <MobileDock />
     <ContactButton />
     <AuthModal />
     <ToastStack />

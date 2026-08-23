@@ -61,3 +61,15 @@ No database or persistent volume is required for the current demo.
 | `VITE_TELEGRAM_URL` | Build argument / local env | Global Telegram support destination |
 
 For production, use a verified support handle and display the same handle in your official-channel documentation to reduce impersonation risk.
+
+## Security and administration
+
+The server sends security headers (including CSP, HSTS when served over HTTPS, frame protection, and a strict referrer policy), limits API traffic, rejects oversized JSON payloads, and includes a Link Safety Guard at `GET /api/link-safety/check?url=` for public HTTPS destinations. Browser-facing integrations use relative `/api` paths.
+
+A server-only, bearer-authenticated configuration API is documented in [ADMIN_API.md](ADMIN_API.md). Set `ADMIN_API_KEY` as a Northflank secret; never use a `VITE_` variable for it. The API is disabled when no key is configured.
+
+Run the local API smoke suite after building:
+
+```bash
+npm run test:api
+```
