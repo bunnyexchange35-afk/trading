@@ -1,63 +1,83 @@
 # Mudrexx Earn
 
-A responsive crypto market and practice-trading web experience built with React, TypeScript, Vite, and Express. The interface is an original implementation inspired by modern Indian fintech patterns; it does not copy Mudrex source code or protected brand assets.
+A responsive crypto market, wallet desk, and practice-trading web experience built with React, TypeScript, Vite, and Express.
 
-## Included
+## Included Features
 
-- Home landing page with a 30-second 3D-style wealth-wallet intro and skip control
-- Live market page with Spot, Futures, and Staking tabs plus folding quick-action forms
-- Instant Order desk with Binance public kline streaming, INR/USDT amounts, time, target %, BUY UP, and BUY DOWN previews
-- Flight Lab practice game with demo credits, random rounds, cash-out controls, and reward/result popups
-- Deposit experience for INR via UPI/bank and USDT via TRC20
-- Sign-in/sign-up demo flow and profile menu for Settings, Wallet, Support, and Community
-- Global Telegram contact button
-- Responsive layouts for desktop, tablet, and mobile
-- Production Express server, API proxy/fallback, health check, and Dockerfile
+- **Wallet Desk & Balance Breakdown**:
+  - **Available Balance**: Liquid funds ready for instant trading, staking, or withdrawal.
+  - **Frozen Amount Section**: Comprehensive inspection and release controls for funds locked in active limit scenarios, flexible earn vaults, or pending deposit verifications.
+  - **Zero Balance for New Registrations**: New accounts initialize with strictly **₹0.00** real balance and receive 10,000 linked demo practice credits.
+- **Demo to Real Conversion Desk**:
+  - Convert practice demo earnings into real wallet INR at an indicative 10:1 ratio.
+  - Quick percentage selectors (`25%`, `50%`, `75%`, `MAX`) and global conversion modal.
+  - Demo-to-Real profile link status indicator and practice credit top-ups.
+- **Persistent Sessions**:
+  - Safe session persistence in `localStorage`. Logged-in users are never repeatedly prompted for login when navigating or taking actions.
+- **Home Landing Page**: With 30-second 3D wealth-wallet intro and live portfolio overview.
+- **Live Market Desk**: Spot, Futures, and Staking tabs with Binance public market feeds.
+- **Instant Order Desk & Flight Lab**: Live chart scenarios, buy up / buy down controls, and multiplier mini-game.
+- **Deposit Experience**: UPI / Bank transfer (INR) and TRC20 (USDT) funding flows recorded in the Frozen Amount section.
 
-> The order desk, balances, account flow, deposit details, and mini-game are demonstrational. No real orders or payments are submitted. Replace the sandbox UI with licensed payment, custody, identity, and exchange services before accepting funds.
+---
 
-## Local development
+## Deploy to Render (render.com)
+
+You can deploy this application on Render as a **Node.js Web Service** or a **Docker Web Service**:
+
+### Option 1: Native Node Web Service (Recommended)
+
+1. Log in to [Render](https://render.com) and click **New +** -> **Web Service**.
+2. Connect your Git repository.
+3. Configure the service settings:
+   - **Name**: `mudrexx-earn`
+   - **Runtime**: `Node`
+   - **Build Command**: `npm install && npm run build`
+   - **Start Command**: `node server.mjs`
+   - **Plan**: `Free` (or higher)
+4. Under **Advanced**:
+   - **Health Check Path**: `/api/health`
+5. Click **Create Web Service**. Render will automatically build the frontend into `dist/` and start the Express server on port `$PORT`.
+
+### Option 2: Render Blueprint (`render.yaml`)
+
+This repository includes a `render.yaml` blueprint. On Render, click **Blueprints** -> **New Blueprint Instance**, select this repository, and Render will configure and deploy the service automatically.
+
+### Option 3: Docker Deployment on Render
+
+1. Click **New +** -> **Web Service**.
+2. Select **Docker** as the environment.
+3. Render will build using the included multi-stage `Dockerfile`.
+
+---
+
+## Local Development
 
 ```bash
+# Install dependencies
 npm install
+
+# Start Vite dev server and Express API concurrently
 npm run dev
 ```
 
-The development command starts both services: Vite on `http://localhost:5173` and the market API on port `8080`. Vite proxies browser requests from `/api` to that API, so no second terminal is needed.
+- Web application: `http://localhost:5173`
+- API server: `http://localhost:8080`
 
-## Production
+## Production Build & Run
 
 ```bash
+# Type check and build frontend into /dist
 npm run build
+
+# Start production Express server
 npm start
 ```
 
-The server binds to `0.0.0.0:${PORT:-8080}`, serves `dist`, and exposes:
+## Environment Variables
 
-- `GET /api/health` — health probe
-- `GET /api/markets` — selected Binance 24-hour tickers
-- `GET /api/market/klines?symbol=BTC&interval=1m` — chart candles
-
-Binance requests use public endpoints and require no API key. If every Binance host is unavailable, the API returns clearly identified fallback data so the UI remains usable.
-
-## Deploy to Northflank
-
-This repository can be deployed directly as a **combined service** using the included multi-stage `Dockerfile`.
-
-1. Create a Northflank project and add a **Combined Service** from this Git repository.
-2. Select **Build with Dockerfile**; path: `Dockerfile`, context: repository root.
-3. Expose public HTTP port **8080**.
-4. Set the health check to `GET /api/health` on port 8080.
-5. Optional build argument: `VITE_TELEGRAM_URL=https://t.me/your_verified_support_handle`.
-6. Deploy. Northflank can inject `PORT`; the server defaults to `8080` when it is absent.
-
-No database or persistent volume is required for the current demo.
-
-## Configuration
-
-| Variable | Type | Purpose |
+| Variable | Type | Description |
 | --- | --- | --- |
-| `PORT` | Runtime variable | Express listen port; defaults to `8080` |
-| `VITE_TELEGRAM_URL` | Build argument / local env | Global Telegram support destination |
-
-For production, use a verified support handle and display the same handle in your official-channel documentation to reduce impersonation risk.
+| `PORT` | Runtime | Port Express listens on (defaults to `process.env.PORT` or `8080`) |
+| `NODE_ENV` | Runtime | `production` in deployed environments |
+| `VITE_TELEGRAM_URL` | Build-time | Telegram support channel link |
