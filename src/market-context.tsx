@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { getMarkets } from './api';
 import { FALLBACK_QUOTES, type MarketQuote } from './data';
 
 type MarketState = {
@@ -27,11 +28,10 @@ export function MarketProvider({ children }: { children: ReactNode }) {
     let active = true;
     const load = async () => {
       try {
-        const response = await fetch('/api/markets');
-        if (!response.ok) throw new Error('Market request failed');
-        const body = (await response.json()) as { data: MarketQuote[]; source: string };
+        // Served by the Mudrexx backend (Binance live feed with fallback).
+        const body = await getMarkets();
         if (!active) return;
-        setQuotes(body.data);
+        setQuotes(Array.isArray(body.data) && body.data.length > 0 ? body.data : FALLBACK_QUOTES);
         setConnected(body.source === 'binance');
         setSource(body.source === 'binance' ? 'Binance live' : 'Cached market');
         setRefreshedAt(new Date());

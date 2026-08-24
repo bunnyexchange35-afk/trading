@@ -234,14 +234,14 @@ function Foldout({
   currency: 'USDT' | 'INR';
   user: ReturnType<typeof useApp>['user'];
   onAuth: () => void;
-  onStake: (asset: string, amount: number, apy: number) => boolean;
+  onStake: (asset: string, amount: number, apy: number) => Promise<boolean>;
   notify: ReturnType<typeof useApp>['notify'];
 }) {
   const [amount, setAmount] = useState('1000');
   const navigate = useNavigate();
   const display = currency === 'INR' ? quote.price * INR_RATE : quote.price;
 
-  const handleStakeClick = () => {
+  const handleStakeClick = async () => {
     if (!user) {
       onAuth();
       return;
@@ -251,7 +251,7 @@ function Foldout({
       notify('Invalid amount', 'Enter a valid amount to stake in vault.', 'warning');
       return;
     }
-    const success = onStake(quote.symbol, val, quote.stakingApy || 4.7);
+    const success = await onStake(quote.symbol, val, quote.stakingApy || 4.7);
     if (success) {
       navigate('/wallet#frozen-section');
     }

@@ -176,7 +176,7 @@ export function WalletPage() {
   const parsedConvert = Math.max(0, Number(convertAmount) || 0);
   const estimatedRealGain = Math.round(parsedConvert * conversionRate * 100) / 100;
 
-  const handleConvertSubmit = (e: FormEvent) => {
+  const handleConvertSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (parsedConvert <= 0) {
       notify('Invalid amount', 'Please enter demo credits to convert.', 'warning');
@@ -186,8 +186,10 @@ export function WalletPage() {
       notify('Insufficient Demo Credits', `You currently have ${demoCredits.toLocaleString()} demo credits.`, 'warning');
       return;
     }
-    convertDemoToReal(parsedConvert);
-    setConvertAmount(String(Math.min(1000, demoCredits - parsedConvert)));
+    const result = await convertDemoToReal(parsedConvert);
+    if (result.success) {
+      setConvertAmount(String(Math.min(1000, demoCredits - parsedConvert)));
+    }
   };
 
   const setPercentConvert = (percent: number) => {

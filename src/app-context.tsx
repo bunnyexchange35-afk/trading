@@ -1,97 +1,27 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import {
+  ApiError,
+  adjustDemoBalance,
+  apiMessage,
+  approveDepositItem,
+  claimDemoCreditsApi,
+  convertDemoCredits,
+  createOrder,
+  getCurrentUser,
+  loginUser,
+  registerUser,
+  releaseFrozenItem,
+  setDemoLinkStatus,
+  stakeInVault,
+  submitDeposit,
+} from './api';
+import type { AuthProfile, Session, User, UserWallet } from './types';
 
 export type FrozenFundCategory = 'order' | 'deposit' | 'staking' | 'withdrawal';
-
-export type FrozenFundItem = {
-  id: string;
-  title: string;
-  category: FrozenFundCategory;
-  reason: string;
-  amount: number;
-  currency: 'INR' | 'USDT';
-  asset?: string;
-  date: string;
-  status: 'locked' | 'processing' | 'accruing';
-  canRelease?: boolean;
-  apy?: number;
-};
-
-export type WalletTransaction = {
-  id: string;
-  title: string;
-  description: string;
-  time: string;
-  amount: number;
-  currency: 'INR' | 'USDT' | 'CREDITS';
-  type: 'deposit' | 'withdrawal' | 'conversion' | 'trade' | 'reward' | 'stake' | 'release';
-  tone: 'up' | 'down' | 'neutral';
-  status: 'completed' | 'pending' | 'processing';
-};
-
-export type UserWallet = {
-  realBalance: number;
-  realUsdtBalance: number;
-  frozenBalance: number;
-  frozenUsdtBalance: number;
-  demoBalance: number;
-  demoLinked: boolean;
-  conversionRate: number; // 100 Demo Credits = 10 INR (0.1 ratio)
-  totalConverted: number;
-  assetHoldings: Record<string, number>;
-  frozenItems: FrozenFundItem[];
-  transactions: WalletTransaction[];
-};
-
-export type User = {
-  name: string;
-  email: string;
-  phone?: string;
-  preferredCurrency?: 'INR' | 'USDT';
-  registeredAt: string;
-  wallet: UserWallet;
-};
+export type { FrozenFundItem, User, UserWallet, WalletTransaction } from './types';
 
 type AuthMode = 'signin' | 'signup';
 type Notice = { id: number; title: string; message: string; tone: 'success' | 'info' | 'warning' };
-
-export function createInitialWallet(isNewUser = true): UserWallet {
-  return {
-    realBalance: 0,
-    realUsdtBalance: 0,
-    frozenBalance: 0,
-    frozenUsdtBalance: 0,
-    demoBalance: 10000,
-    demoLinked: true,
-    conversionRate: 0.1, // 100 Demo Credits = ₹10 Real INR
-    totalConverted: 0,
-    assetHoldings: {
-      BTC: 0,
-      ETH: 0,
-      BNB: 0,
-      SOL: 0,
-      XRP: 0,
-      ETC: 0,
-      ADA: 0,
-      DOGE: 0,
-    },
-    frozenItems: [],
-    transactions: isNewUser
-      ? [
-          {
-            id: 'tx-welcome',
-            title: 'Account Registered',
-            description: 'New account initialized with ₹0.00 balance and 10,000 practice credits',
-            time: 'Just now',
-            amount: 0,
-            currency: 'INR',
-            type: 'reward',
-            tone: 'neutral',
-            status: 'completed',
-          },
-        ]
-      : [],
-  };
-}
 
 function sanitizeUser(data: unknown): User | null {
   if (!data || typeof data !== 'object') return null;
@@ -135,33 +65,33 @@ function sanitizeUser(data: unknown): User | null {
 
 type AppState = {
   user: User | null;
+  /** True while a backend request is changing auth state (login/register). */
+  syncing: boolean;
   authMode: AuthMode | null;
   openAuth: (mode: AuthMode) => void;
   closeAuth: () => void;
-  authenticate: (
-    userProfile: { name: string; email: string; phone?: string; preferredCurrency?: 'INR' | 'USDT' },
-    isNewUser?: boolean
-  ) => void;
+  /** Registers (isNewUser) or logs in through the backend. Throws on failure (after notifying). */
+  authenticate: (userProfile: AuthProfile, isNewUser?: boolean) => Promise<void>;
   signOut: () => void;
   notices: Notice[];
   notify: (title: string, message: string, tone?: Notice['tone']) => void;
   dismiss: (id: number) => void;
-  // Wallet operations:
-  convertDemoToReal: (demoCredits: number) => { success: boolean; realGain: number; message: string };
-  addDeposit: (amount: number, rail: 'inr' | 'usdt', method: string, reference?: string) => void;
-  approveDeposit: (id: string) => void;
-  cancelOrReleaseFrozen: (id: string) => void;
+  // Wallet operations (all backend-driven):
+  convertDemoToReal: (demoCredits: number) => Promise<{ success: boolean; realGain: number; message: string }>;
+  addDeposit: (amount: number, rail: 'inr' | 'usdt', method: string, reference?: string) => Promise<boolean>;
+  approveDeposit: (id: string) => Promise<void>;
+  cancelOrReleaseFrozen: (id: string) => Promise<void>;
   addFrozenOrder: (order: {
     title: string;
     amount: number;
     currency: 'INR' | 'USDT';
     asset?: string;
     side?: 'up' | 'down';
-  }) => boolean;
-  addStakingVault: (asset: string, amount: number, apy: number) => boolean;
-  claimDemoCredits: (amount?: number) => void;
-  setDemoLinked: (linked: boolean) => void;
-  updateDemoBalance: (delta: number) => void;
+  }) => Promise<boolean>;
+  addStakingVault: (asset: string, amount: number, apy: number) => Promise<boolean>;
+  claimDemoCredits: (amount?: number) => Promise<void>;
+  setDemoLinked: (linked: boolean) => Promise<void>;
+  updateDemoBalance: (delta: number) => Promise<void>;
   // Conversion modal:
   isConversionOpen: boolean;
   openConversionModal: () => void;
@@ -171,27 +101,44 @@ type AppState = {
 const AppContext = createContext<AppState | null>(null);
 let noticeId = 0;
 
-export function AppProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(() => {
-    try {
-      const stored = localStorage.getItem('mudrexx-user');
-      if (!stored) return null;
-      return sanitizeUser(JSON.parse(stored));
-    } catch {
-      return null;
-    }
-  });
+function readSession(): Session | null {
+  try {
+    const stored = localStorage.getItem('mudrexx-session');
+    if (!stored) return null;
+    const parsed = JSON.parse(stored) as Partial<Session>;
+    return parsed && typeof parsed.email === 'string' && typeof parsed.token === 'string'
+      ? { email: parsed.email, token: parsed.token }
+      : null;
+  } catch {
+    return null;
+  }
+}
 
+function readCachedUser(): User | null {
+  try {
+    const stored = localStorage.getItem('mudrexx-user');
+    if (!stored) return null;
+    return sanitizeUser(JSON.parse(stored));
+  } catch {
+    return null;
+  }
+}
+
+export function AppProvider({ children }: { children: ReactNode }) {
+  // Start from the cached copy so persistent sessions render instantly,
+  // then re-sync from the backend which is the source of truth.
+  const [user, setUser] = useState<User | null>(readCachedUser);
+  const [session, setSession] = useState<Session | null>(readSession);
   const [authMode, setAuthMode] = useState<AuthMode | null>(null);
   const [notices, setNotices] = useState<Notice[]>([]);
   const [isConversionOpen, setIsConversionOpen] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
-  // Keep localStorage updated whenever user object changes
+  // Cache the latest backend state for instant session restore next visit.
   useEffect(() => {
     if (user) {
-      localStorage.setItem('mudrexx-user', JSON.stringify(user));
       try {
-        localStorage.setItem(`mudrexx-user-data-${user.email}`, JSON.stringify(user));
+        localStorage.setItem('mudrexx-user', JSON.stringify(user));
       } catch {
         /* storage safe */
       }
@@ -199,6 +146,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem('mudrexx-user');
     }
   }, [user]);
+
+  // Persist the backend session token.
+  useEffect(() => {
+    if (session) {
+      try {
+        localStorage.setItem('mudrexx-session', JSON.stringify(session));
+      } catch {
+        /* storage safe */
+      }
+    } else {
+      localStorage.removeItem('mudrexx-session');
+    }
+  }, [session]);
 
   const notify = useCallback((title: string, message: string, tone: Notice['tone'] = 'success') => {
     const id = ++noticeId;
@@ -210,246 +170,149 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setNotices((current) => current.filter((item) => item.id !== id));
   }, []);
 
-  const authenticate = useCallback(
-    (
-      userProfile: { name: string; email: string; phone?: string; preferredCurrency?: 'INR' | 'USDT' },
-      isNewUser = false
-    ) => {
-      // Check if user has an existing saved account in localStorage
-      let existing: User | null = null;
-      try {
-        const storedUserData = localStorage.getItem(`mudrexx-user-data-${userProfile.email}`);
-        if (storedUserData) {
-          existing = sanitizeUser(JSON.parse(storedUserData));
-        }
-      } catch {
-        /* safe */
-      }
+  /** Re-fetch the account from the backend and apply it as the new state. */
+  const refreshFromServer = useCallback(async (email: string) => {
+    const res = await getCurrentUser(email);
+    if (!res?.success || !res.user) {
+      throw new ApiError(res?.error || 'Backend rejected the account refresh.', 502);
+    }
+    const fresh = sanitizeUser(res.user);
+    if (!fresh) throw new ApiError('Backend returned an invalid account payload.', 502);
+    setUser(fresh);
+    return fresh;
+  }, []);
 
-      if (existing && !isNewUser) {
-        setUser({
-          ...existing,
-          name: userProfile.name || existing.name,
-          phone: userProfile.phone || existing.phone,
-          preferredCurrency: userProfile.preferredCurrency || existing.preferredCurrency,
-        });
-      } else {
-        // When a new user is registered, balance is strictly ZERO
-        const newUser: User = {
-          name: userProfile.name,
-          email: userProfile.email,
-          phone: userProfile.phone || '',
-          preferredCurrency: userProfile.preferredCurrency || 'INR',
-          registeredAt: new Date().toISOString(),
-          wallet: createInitialWallet(true),
-        };
-        setUser(newUser);
+  // On mount (or after sign-in), re-sync the stored session with the backend.
+  useEffect(() => {
+    if (!session) return;
+    let active = true;
+    (async () => {
+      try {
+        await refreshFromServer(session.email);
+      } catch (error) {
+        if (active) {
+          notify('Backend unavailable', `${apiMessage(error)} Showing the last synced data.`, 'warning');
+        }
       }
-      setAuthMode(null);
+    })();
+    return () => {
+      active = false;
+    };
+  }, [session, refreshFromServer, notify]);
+
+  const authenticate = useCallback(
+    async (userProfile: AuthProfile, isNewUser = false) => {
+      setSyncing(true);
+      try {
+        const res = isNewUser
+          ? await registerUser(userProfile)
+          : await loginUser(userProfile.email, userProfile.name);
+        if (!res?.success || !res.user) {
+          throw new ApiError(res?.error || 'Authentication failed on the backend.', 401);
+        }
+        const nextUser = sanitizeUser(res.user);
+        if (!nextUser) throw new ApiError('Backend returned an invalid account payload.', 502);
+        setUser(nextUser);
+        setSession({ email: nextUser.email, token: res.token || `mudrexx_${nextUser.email}` });
+        setAuthMode(null);
+      } catch (error) {
+        notify('Authentication failed', apiMessage(error), 'warning');
+        throw error;
+      } finally {
+        setSyncing(false);
+      }
     },
-    []
+    [notify]
   );
 
   const signOut = useCallback(() => {
     setUser(null);
-    localStorage.removeItem('mudrexx-user');
+    setSession(null);
   }, []);
 
-  // Demo to Real Conversion
+  // Demo to Real Conversion — backend validates and credits the real wallet.
   const convertDemoToReal = useCallback(
-    (demoCredits: number) => {
+    async (demoCredits: number) => {
       if (!user) {
         return { success: false, realGain: 0, message: 'Please sign in to convert demo balance.' };
       }
-      if (demoCredits <= 0) {
-        return { success: false, realGain: 0, message: 'Enter a valid conversion amount.' };
-      }
-      if (demoCredits > user.wallet.demoBalance) {
+      try {
+        const res = await convertDemoCredits(user.email, demoCredits);
+        if (!res?.success) throw new ApiError(res?.error || 'Conversion failed on the backend.');
+        await refreshFromServer(user.email);
+        notify(
+          'Conversion successful! 🎉',
+          res.message ||
+            `Credited ₹${(res.realGain ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })} into your Real Available balance.`,
+          'success'
+        );
         return {
-          success: false,
-          realGain: 0,
-          message: `Insufficient demo credits. Available: ${user.wallet.demoBalance.toLocaleString()}`,
+          success: true,
+          realGain: res.realGain ?? 0,
+          message: res.message || 'Demo credits converted to real balance.',
         };
+      } catch (error) {
+        const message = apiMessage(error);
+        notify('Conversion failed', message, 'warning');
+        return { success: false, realGain: 0, message };
       }
-
-      const rate = user.wallet.conversionRate || 0.1;
-      const realGain = Math.round(demoCredits * rate * 100) / 100;
-
-      const updatedWallet: UserWallet = {
-        ...user.wallet,
-        demoBalance: user.wallet.demoBalance - demoCredits,
-        realBalance: user.wallet.realBalance + realGain,
-        totalConverted: (user.wallet.totalConverted || 0) + demoCredits,
-        transactions: [
-          {
-            id: `tx-conv-${Date.now()}`,
-            title: 'Demo to Real Conversion',
-            description: `Converted ${demoCredits.toLocaleString()} Demo Credits at 10:1 ratio`,
-            time: 'Just now',
-            amount: realGain,
-            currency: 'INR',
-            type: 'conversion',
-            tone: 'up',
-            status: 'completed',
-          },
-          ...user.wallet.transactions,
-        ],
-      };
-
-      setUser({ ...user, wallet: updatedWallet });
-      notify(
-        'Conversion successful! 🎉',
-        `Credited ₹${realGain.toLocaleString('en-IN', { minimumFractionDigits: 2 })} into your Real Available balance.`,
-        'success'
-      );
-
-      return {
-        success: true,
-        realGain,
-        message: `Successfully converted ${demoCredits.toLocaleString()} Demo Credits into ₹${realGain.toFixed(2)} Real Balance.`,
-      };
     },
-    [user, notify]
+    [user, refreshFromServer, notify]
   );
 
-  // Add Deposit (moves to Frozen balance pending verification)
+  // Add Deposit (backend records it in the Frozen Amount section).
   const addDeposit = useCallback(
-    (amount: number, rail: 'inr' | 'usdt', method: string, reference = '') => {
-      if (!user) return;
-
-      const isINR = rail === 'inr';
-      const newFrozenItem: FrozenFundItem = {
-        id: `dep-${Date.now()}`,
-        title: `${rail.toUpperCase()} Deposit (${method.toUpperCase()})`,
-        category: 'deposit',
-        reason: reference ? `Ref / UTR: ${reference}` : 'Verification in progress (Sandbox review)',
-        amount,
-        currency: isINR ? 'INR' : 'USDT',
-        date: 'Just now',
-        status: 'processing',
-        canRelease: true,
-      };
-
-      const updatedWallet: UserWallet = {
-        ...user.wallet,
-        frozenBalance: isINR ? user.wallet.frozenBalance + amount : user.wallet.frozenBalance,
-        frozenUsdtBalance: !isINR ? user.wallet.frozenUsdtBalance + amount : user.wallet.frozenUsdtBalance,
-        frozenItems: [newFrozenItem, ...user.wallet.frozenItems],
-        transactions: [
-          {
-            id: `tx-dep-${Date.now()}`,
-            title: `${rail.toUpperCase()} Deposit Submitted`,
-            description: `${method.toUpperCase()} deposit in verification (${reference || 'Submitted'})`,
-            time: 'Just now',
-            amount,
-            currency: isINR ? 'INR' : 'USDT',
-            type: 'deposit',
-            tone: 'up',
-            status: 'pending',
-          },
-          ...user.wallet.transactions,
-        ],
-      };
-
-      setUser({ ...user, wallet: updatedWallet });
-      notify(
-        'Deposit submitted',
-        `₹${amount.toLocaleString('en-IN')} is recorded in your Frozen Balance pending verification.`,
-        'info'
-      );
+    async (amount: number, rail: 'inr' | 'usdt', method: string, reference = '') => {
+      if (!user) return false;
+      try {
+        const res = await submitDeposit({ email: user.email, amount, rail, method, reference });
+        if (!res?.success) throw new ApiError(res?.error || 'Deposit could not be submitted.');
+        await refreshFromServer(user.email);
+        notify('Deposit submitted', res.message || 'Your deposit is recorded in the Frozen Balance pending verification.', 'info');
+        return true;
+      } catch (error) {
+        notify('Deposit failed', apiMessage(error), 'warning');
+        return false;
+      }
     },
-    [user, notify]
+    [user, refreshFromServer, notify]
   );
 
-  // Approve pending deposit (moves from frozen to available)
+  // Approve pending deposit (backend moves it from frozen to available).
   const approveDeposit = useCallback(
-    (id: string) => {
+    async (id: string) => {
       if (!user) return;
-      const item = user.wallet.frozenItems.find((f) => f.id === id);
-      if (!item) return;
-
-      const isINR = item.currency === 'INR';
-      const updatedWallet: UserWallet = {
-        ...user.wallet,
-        frozenBalance: isINR ? Math.max(0, user.wallet.frozenBalance - item.amount) : user.wallet.frozenBalance,
-        frozenUsdtBalance: !isINR
-          ? Math.max(0, user.wallet.frozenUsdtBalance - item.amount)
-          : user.wallet.frozenUsdtBalance,
-        realBalance: isINR ? user.wallet.realBalance + item.amount : user.wallet.realBalance,
-        realUsdtBalance: !isINR ? user.wallet.realUsdtBalance + item.amount : user.wallet.realUsdtBalance,
-        frozenItems: user.wallet.frozenItems.filter((f) => f.id !== id),
-        transactions: [
-          {
-            id: `tx-app-${Date.now()}`,
-            title: 'Deposit Verified & Unlocked',
-            description: `${item.currency} ${item.amount.toLocaleString()} moved from Frozen to Available balance`,
-            time: 'Just now',
-            amount: item.amount,
-            currency: item.currency,
-            type: 'deposit',
-            tone: 'up',
-            status: 'completed',
-          },
-          ...user.wallet.transactions,
-        ],
-      };
-
-      setUser({ ...user, wallet: updatedWallet });
-      notify(
-        'Deposit approved & credited! ✅',
-        `${item.currency === 'INR' ? '₹' : '₮'}${item.amount.toLocaleString()} is now in your Available Balance.`,
-        'success'
-      );
+      try {
+        const res = await approveDepositItem(user.email, id);
+        if (!res?.success) throw new ApiError(res?.error || 'Deposit approval failed.');
+        await refreshFromServer(user.email);
+        notify('Deposit approved & credited! ✅', res.message || 'Funds moved from Frozen to Available Balance.', 'success');
+      } catch (error) {
+        notify('Approval failed', apiMessage(error), 'warning');
+      }
     },
-    [user, notify]
+    [user, refreshFromServer, notify]
   );
 
-  // Cancel or Release any Frozen Item back to Available Balance
+  // Cancel or Release any Frozen Item back to Available Balance.
   const cancelOrReleaseFrozen = useCallback(
-    (id: string) => {
+    async (id: string) => {
       if (!user) return;
-      const item = user.wallet.frozenItems.find((f) => f.id === id);
-      if (!item) return;
-
-      const isINR = item.currency === 'INR';
-      const updatedWallet: UserWallet = {
-        ...user.wallet,
-        frozenBalance: isINR ? Math.max(0, user.wallet.frozenBalance - item.amount) : user.wallet.frozenBalance,
-        frozenUsdtBalance: !isINR
-          ? Math.max(0, user.wallet.frozenUsdtBalance - item.amount)
-          : user.wallet.frozenUsdtBalance,
-        realBalance: isINR ? user.wallet.realBalance + item.amount : user.wallet.realBalance,
-        realUsdtBalance: !isINR ? user.wallet.realUsdtBalance + item.amount : user.wallet.realUsdtBalance,
-        frozenItems: user.wallet.frozenItems.filter((f) => f.id !== id),
-        transactions: [
-          {
-            id: `tx-rel-${Date.now()}`,
-            title: 'Frozen Funds Released',
-            description: `${item.title} released back to available balance`,
-            time: 'Just now',
-            amount: item.amount,
-            currency: item.currency,
-            type: 'release',
-            tone: 'up',
-            status: 'completed',
-          },
-          ...user.wallet.transactions,
-        ],
-      };
-
-      setUser({ ...user, wallet: updatedWallet });
-      notify(
-        'Funds released! 🔓',
-        `${item.currency === 'INR' ? '₹' : '₮'}${item.amount.toLocaleString()} returned to your Available Balance.`,
-        'info'
-      );
+      try {
+        const res = await releaseFrozenItem(user.email, id);
+        if (!res?.success) throw new ApiError(res?.error || 'Release failed on the backend.');
+        await refreshFromServer(user.email);
+        notify('Funds released! 🔓', res.message || 'Funds returned to your Available Balance.', 'info');
+      } catch (error) {
+        notify('Release failed', apiMessage(error), 'warning');
+      }
     },
-    [user, notify]
+    [user, refreshFromServer, notify]
   );
 
-  // Add Frozen Order (moves funds to frozen during active scenario)
+  // Place a real order (backend escrows the funds in Frozen Amount).
   const addFrozenOrder = useCallback(
-    (order: {
+    async (order: {
       title: string;
       amount: number;
       currency: 'INR' | 'USDT';
@@ -457,190 +320,104 @@ export function AppProvider({ children }: { children: ReactNode }) {
       side?: 'up' | 'down';
     }) => {
       if (!user) return false;
-      const isINR = order.currency === 'INR';
-      const available = isINR ? user.wallet.realBalance : user.wallet.realUsdtBalance;
-
-      if (order.amount > available) {
+      try {
+        const res = await createOrder({
+          email: user.email,
+          symbol: order.asset || 'BTC',
+          side: order.side || 'up',
+          amount: order.amount,
+          currency: order.currency,
+          accountType: 'real',
+        });
+        if (!res?.success) throw new ApiError(res?.error || 'Order could not be placed.');
+        await refreshFromServer(user.email);
         notify(
-          'Insufficient real balance',
-          `You have ${isINR ? '₹' : '₮'}${available.toLocaleString()} available. Deposit or convert demo credits first.`,
-          'warning'
+          'Order placed & funds frozen',
+          res.message || `${order.currency === 'INR' ? '₹' : '₮'}${order.amount.toLocaleString()} is locked in your Frozen Amount section until executed or cancelled.`,
+          'success'
         );
+        return true;
+      } catch (error) {
+        notify('Order failed', apiMessage(error), 'warning');
         return false;
       }
-
-      const newFrozenItem: FrozenFundItem = {
-        id: `ord-${Date.now()}`,
-        title: order.title || `${order.asset || 'Crypto'} ${order.side === 'up' ? 'BUY UP' : 'BUY DOWN'} Order`,
-        category: 'order',
-        reason: `Active limit order on ${order.asset || 'Market'}`,
-        amount: order.amount,
-        currency: order.currency,
-        asset: order.asset,
-        date: 'Just now',
-        status: 'locked',
-        canRelease: true,
-      };
-
-      const updatedWallet: UserWallet = {
-        ...user.wallet,
-        realBalance: isINR ? user.wallet.realBalance - order.amount : user.wallet.realBalance,
-        realUsdtBalance: !isINR ? user.wallet.realUsdtBalance - order.amount : user.wallet.realUsdtBalance,
-        frozenBalance: isINR ? user.wallet.frozenBalance + order.amount : user.wallet.frozenBalance,
-        frozenUsdtBalance: !isINR ? user.wallet.frozenUsdtBalance + order.amount : user.wallet.frozenUsdtBalance,
-        frozenItems: [newFrozenItem, ...user.wallet.frozenItems],
-        transactions: [
-          {
-            id: `tx-ord-${Date.now()}`,
-            title: `Order Placed (${order.side?.toUpperCase() || 'TRADE'})`,
-            description: `${order.currency} ${order.amount} held in frozen order escrow`,
-            time: 'Just now',
-            amount: order.amount,
-            currency: order.currency,
-            type: 'trade',
-            tone: 'down',
-            status: 'pending',
-          },
-          ...user.wallet.transactions,
-        ],
-      };
-
-      setUser({ ...user, wallet: updatedWallet });
-      notify(
-        'Order placed & funds frozen',
-        `${isINR ? '₹' : '₮'}${order.amount.toLocaleString()} is locked in your Frozen Amount section until executed or cancelled.`,
-        'success'
-      );
-      return true;
     },
-    [user, notify]
+    [user, refreshFromServer, notify]
   );
 
-  // Add Staking Vault
+  // Stake in a flexible vault (backend locks the amount in Frozen Balance).
   const addStakingVault = useCallback(
-    (asset: string, amount: number, apy: number) => {
+    async (asset: string, amount: number, apy: number) => {
       if (!user) return false;
-      const available = user.wallet.realBalance;
-      if (amount > available) {
-        notify(
-          'Insufficient balance for vault',
-          `Available: ₹${available.toLocaleString()}. Convert demo credits or deposit funds.`,
-          'warning'
-        );
+      try {
+        const res = await stakeInVault({ email: user.email, asset, amount, apy });
+        if (!res?.success) throw new ApiError(res?.error || 'Staking failed on the backend.');
+        await refreshFromServer(user.email);
+        notify('Staking vault active! ✨', res.message || `₹${amount.toLocaleString()} is now accruing daily rewards.`, 'success');
+        return true;
+      } catch (error) {
+        notify('Staking failed', apiMessage(error), 'warning');
         return false;
       }
-
-      const newFrozenItem: FrozenFundItem = {
-        id: `stk-${Date.now()}`,
-        title: `Flexible ${asset} Staking Vault`,
-        category: 'staking',
-        reason: `Earning indicative ${apy}% APY daily rewards`,
-        amount,
-        currency: 'INR',
-        asset,
-        date: 'Just now',
-        status: 'accruing',
-        canRelease: true,
-        apy,
-      };
-
-      const updatedWallet: UserWallet = {
-        ...user.wallet,
-        realBalance: user.wallet.realBalance - amount,
-        frozenBalance: user.wallet.frozenBalance + amount,
-        frozenItems: [newFrozenItem, ...user.wallet.frozenItems],
-        transactions: [
-          {
-            id: `tx-stk-${Date.now()}`,
-            title: `Staked in ${asset} Vault`,
-            description: `₹${amount} locked in flexible earn earning ${apy}% APY`,
-            time: 'Just now',
-            amount,
-            currency: 'INR',
-            type: 'stake',
-            tone: 'neutral',
-            status: 'completed',
-          },
-          ...user.wallet.transactions,
-        ],
-      };
-
-      setUser({ ...user, wallet: updatedWallet });
-      notify(
-        'Staking vault active! ✨',
-        `₹${amount.toLocaleString()} is now accruing daily rewards in the Flexible ${asset} Vault.`,
-        'success'
-      );
-      return true;
     },
-    [user, notify]
+    [user, refreshFromServer, notify]
   );
 
-  // Claim Practice Demo Credits
+  // Claim Practice Demo Credits (backend grant).
   const claimDemoCredits = useCallback(
-    (amount = 5000) => {
+    async (amount = 5000) => {
       if (!user) return;
-      const updatedWallet: UserWallet = {
-        ...user.wallet,
-        demoBalance: user.wallet.demoBalance + amount,
-        transactions: [
-          {
-            id: `tx-demo-${Date.now()}`,
-            title: 'Demo Practice Grant Claimed',
-            description: `Added ${amount.toLocaleString()} credits to demo practice balance`,
-            time: 'Just now',
-            amount,
-            currency: 'CREDITS',
-            type: 'reward',
-            tone: 'up',
-            status: 'completed',
-          },
-          ...user.wallet.transactions,
-        ],
-      };
-      setUser({ ...user, wallet: updatedWallet });
-      notify('Demo credits claimed! 🎁', `Added ${amount.toLocaleString()} credits to your demo wallet.`, 'success');
+      try {
+        const res = await claimDemoCreditsApi(user.email, amount);
+        if (!res?.success) throw new ApiError(res?.error || 'Demo grant failed.');
+        await refreshFromServer(user.email);
+        notify('Demo credits claimed! 🎁', `Added ${(res.claimedAmount ?? amount).toLocaleString()} credits to your demo wallet.`, 'success');
+      } catch (error) {
+        notify('Claim failed', apiMessage(error), 'warning');
+      }
     },
-    [user, notify]
-  );
-
-  // Update demo balance (from games / flight lab)
-  const updateDemoBalance = useCallback(
-    (delta: number) => {
-      if (!user) return;
-      setUser((prev) => {
-        if (!prev) return null;
-        return {
-          ...prev,
-          wallet: {
-            ...prev.wallet,
-            demoBalance: Math.max(0, prev.wallet.demoBalance + delta),
-          },
-        };
-      });
-    },
-    [user]
+    [user, refreshFromServer, notify]
   );
 
   const setDemoLinked = useCallback(
-    (linked: boolean) => {
+    async (linked: boolean) => {
       if (!user) return;
-      setUser({
-        ...user,
-        wallet: {
-          ...user.wallet,
-          demoLinked: linked,
-        },
-      });
-      notify(
-        linked ? 'Demo Linked to Real Account' : 'Demo Unlinked',
-        linked
-          ? 'Your demo practice trading rewards can now be converted to real wallet balance.'
-          : 'Demo conversion is paused.',
-        'info'
-      );
+      try {
+        const res = await setDemoLinkStatus(user.email, linked);
+        if (!res?.success) throw new ApiError(res?.error || 'Could not update demo link status.');
+        await refreshFromServer(user.email);
+        notify(
+          linked ? 'Demo Linked to Real Account' : 'Demo Unlinked',
+          linked
+            ? 'Your demo practice trading rewards can now be converted to real wallet balance.'
+            : 'Demo conversion is paused.',
+          'info'
+        );
+      } catch (error) {
+        notify('Update failed', apiMessage(error), 'warning');
+      }
     },
-    [user, notify]
+    [user, refreshFromServer, notify]
+  );
+
+  // Update demo balance (Flight Lab wagers/cash-outs) — backend-controlled.
+  const updateDemoBalance = useCallback(
+    async (delta: number) => {
+      if (!user) return;
+      try {
+        const res = await adjustDemoBalance(user.email, delta);
+        if (!res?.success) throw new ApiError(res?.error || 'Demo balance update failed.');
+        await refreshFromServer(user.email);
+      } catch (error) {
+        notify('Demo balance update failed', apiMessage(error), 'warning');
+        try {
+          await refreshFromServer(user.email);
+        } catch {
+          /* backend still down — keep local state */
+        }
+      }
+    },
+    [user, refreshFromServer, notify]
   );
 
   const openConversionModal = useCallback(() => setIsConversionOpen(true), []);
@@ -649,6 +426,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AppState>(
     () => ({
       user,
+      syncing,
       authMode,
       openAuth: setAuthMode,
       closeAuth: () => setAuthMode(null),
@@ -672,6 +450,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }),
     [
       user,
+      syncing,
       authMode,
       authenticate,
       signOut,

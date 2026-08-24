@@ -1,4 +1,5 @@
 import express from 'express';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -21,13 +22,51 @@ const apy = { BTC: 2.8, ETH: 4.7, BNB: 3.4, SOL: 6.9, XRP: 2.2, ETC: 3.8, ADA: 5
 let marketCache = null;
 let cacheAt = 0;
 
+// ============================================================================
+// PERSISTENT USER STORE (JSON on disk so the backend stays authoritative
+// across restarts; runtime data lives in server/data which is gitignored)
+// ============================================================================
+const dataDir = path.join(__dirname, 'server', 'data');
+const dataFile = path.join(dataDir, 'users.json');
+let saveTimer = null;
+
+function persist() {
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    try {
+      fs.mkdirSync(dataDir, { recursive: true });
+      const tmpFile = `${dataFile}.tmp`;
+      fs.writeFileSync(tmpFile, JSON.stringify(Object.fromEntries(userDb), null, 2));
+      fs.renameSync(tmpFile, dataFile);
+    } catch (error) {
+      console.error('[persist] failed to save user store:', error.message);
+    }
+  }, 350);
+}
+
+function loadUsersFromDisk() {
+  try {
+    if (!fs.existsSync(dataFile)) return;
+    const stored = JSON.parse(fs.readFileSync(dataFile, 'utf8'));
+    let count = 0;
+    for (const [email, record] of Object.entries(stored)) {
+      if (record && typeof record === 'object' && record.wallet) {
+        userDb.set(email, record);
+        count += 1;
+      }
+    }
+    if (count > 0) console.log(`[store] restored ${count} user account(s) from ${path.relative(__dirname, dataFile)}`);
+  } catch (error) {
+    console.error('[store] could not restore persisted users:', error.message);
+  }
+}
+
 // In-Memory User and Wallet State Store (keyed by email)
 const userDb = new Map();
 
 function getOrCreateUser(email, name = '') {
   const normalized = String(email || 'demo@mudrexx.com').trim().toLowerCase();
-  if (!userDb.has(normalized)) {
-    // New user registration starts with ZERO balance and 10,000 demo credits
+  if (!userDb.has(normalized)) {    // New user registration starts with ZERO balance and 10,000 demo credits
     userDb.set(normalized, {
       name: name || normalized.split('@')[0],
       email: normalized,
@@ -60,6 +99,7 @@ function getOrCreateUser(email, name = '') {
         ],
       },
     });
+    persist();
   }
   return userDb.get(normalized);
 }
@@ -139,6 +179,7 @@ app.get('/api', (_req, res) => {
         convertDemo: 'POST /api/wallet/convert-demo',
         claimDemo: 'POST /api/wallet/claim-demo',
         linkDemo: 'POST /api/wallet/link-demo',
+        adjustDemo: 'POST /api/wallet/demo/adjust',
       },
       deposit: 'POST /api/deposit/submit',
       withdraw: 'POST /api/withdraw/submit',
@@ -225,6 +266,7 @@ app.post('/api/auth/register', (req, res) => {
   const user = getOrCreateUser(normalized, name);
   if (phone) user.phone = phone;
   if (preferredCurrency) user.preferredCurrency = preferredCurrency;
+  persist();
 
   res.json({
     success: true,
@@ -266,6 +308,7 @@ app.put('/api/user/profile', (req, res) => {
   if (name) user.name = name;
   if (phone !== undefined) user.phone = phone;
   if (preferredCurrency) user.preferredCurrency = preferredCurrency;
+  persist();
 
   res.json({ success: true, message: 'Profile updated', user });
 });
@@ -350,6 +393,7 @@ app.post('/api/wallet/frozen/release', (req, res) => {
     status: 'completed',
   });
 
+  persist();
   res.json({
     success: true,
     message: `${item.currency === 'INR' ? '₹' : '₮'}${item.amount.toLocaleString()} released to Available Balance`,
@@ -391,6 +435,7 @@ app.post('/api/wallet/deposit/approve', (req, res) => {
     status: 'completed',
   });
 
+  persist();
   res.json({
     success: true,
     message: 'Deposit verified and credited to Available Balance',
@@ -437,6 +482,7 @@ app.post('/api/wallet/convert-demo', (req, res) => {
     status: 'completed',
   });
 
+  persist();
   res.json({
     success: true,
     message: `Converted ${credits.toLocaleString()} Demo Credits to ₹${realGain.toFixed(2)} Real INR`,
@@ -465,6 +511,7 @@ app.post('/api/wallet/claim-demo', (req, res) => {
     status: 'completed',
   });
 
+  persist();
   res.json({
     success: true,
     claimedAmount: grant,
@@ -476,6 +523,7 @@ app.post('/api/wallet/link-demo', (req, res) => {
   const { email, linked } = req.body || {};
   const user = getOrCreateUser(email);
   user.wallet.demoLinked = linked !== undefined ? Boolean(linked) : true;
+  persist();
 
   res.json({
     success: true,
@@ -529,6 +577,7 @@ app.post('/api/deposit/submit', (req, res) => {
     status: 'pending',
   });
 
+  persist();
   res.json({
     success: true,
     message: `Deposit of ${isINR ? '₹' : '₮'}${amt} recorded in Frozen Amount section pending verification`,
@@ -566,6 +615,7 @@ app.post('/api/withdraw/submit', (req, res) => {
     status: 'pending',
   });
 
+  persist();
   res.json({
     success: true,
     message: `Withdrawal request of ₹${amt.toLocaleString()} submitted for processing`,
@@ -630,6 +680,7 @@ app.post('/api/orders/create', (req, res) => {
       status: 'pending',
     });
 
+    persist();
     return res.json({
       success: true,
       message: `${currency === 'INR' ? '₹' : '₮'}${amt} placed into Frozen Amount section`,
@@ -691,12 +742,53 @@ app.post('/api/staking/stake', (req, res) => {
     status: 'completed',
   });
 
+  persist();
   res.json({
     success: true,
     message: `₹${amt} staked in Flexible ${asset} Vault (Held in Frozen Balance)`,
     vaultId: vaultItem.id,
     newAvailable: user.wallet.realBalance,
     newFrozen: user.wallet.frozenBalance,
+  });
+});
+
+// Adjust demo practice balance (Flight Lab wagers & cash-outs are backend-controlled)
+app.post('/api/wallet/demo/adjust', (req, res) => {
+  const { email, delta } = req.body || {};
+  const change = Number(delta);
+  if (!email || !Number.isFinite(change) || change === 0) {
+    return res.status(400).json({ error: 'Email and non-zero numeric delta required' });
+  }
+
+  const user = getOrCreateUser(email);
+  if (change < 0 && Math.abs(change) > user.wallet.demoBalance) {
+    return res.status(400).json({
+      error: `Insufficient demo credits. Available: ${user.wallet.demoBalance}`,
+    });
+  }
+
+  user.wallet.demoBalance = Math.max(0, user.wallet.demoBalance + change);
+  user.wallet.transactions.unshift({
+    id: `tx-demo-${Date.now()}`,
+    title: change < 0 ? 'Flight Lab Wager' : 'Flight Lab Cash Out',
+    description:
+      change < 0
+        ? `${Math.abs(change).toLocaleString()} demo credits wagered in Flight Lab`
+        : `+${change.toLocaleString()} demo credits won in Flight Lab`,
+    time: 'Just now',
+    amount: Math.abs(change),
+    currency: 'CREDITS',
+    type: change < 0 ? 'trade' : 'reward',
+    tone: change < 0 ? 'down' : 'up',
+    status: 'completed',
+  });
+
+  persist();
+  res.json({
+    success: true,
+    message: `Demo balance adjusted by ${change >= 0 ? '+' : ''}${change} credits`,
+    delta: change,
+    newDemoBalance: user.wallet.demoBalance,
   });
 });
 
@@ -711,4 +803,5 @@ app.get('*', (req, res, next) => {
 });
 app.use((_req, res) => res.status(404).json({ error: 'Endpoint not found' }));
 
+loadUsersFromDisk();
 app.listen(port, '0.0.0.0', () => console.log(`Mudrexx Earn backend is listening on 0.0.0.0:${port}`));

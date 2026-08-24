@@ -6,6 +6,7 @@ import {
   Trophy, Wallet, X,
 } from 'lucide-react';
 import { CoinIcon } from './components';
+import { createOrder } from './api';
 import { ASSETS, INR_RATE, money } from './data';
 import { useMarket } from './market-context';
 import { useApp } from './app-context';
@@ -42,7 +43,7 @@ export default function InstantOrder() {
     setParams({ asset: next });
   };
 
-  const submitOrder = () => {
+  const submitOrder = async () => {
     if (!user) {
       openAuth('signin');
       return;
@@ -67,7 +68,7 @@ export default function InstantOrder() {
         return;
       }
 
-      const success = addFrozenOrder({
+      const success = await addFrozenOrder({
         title: `${symbol} ${side === 'up' ? 'BUY UP' : 'BUY DOWN'} Scenario`,
         amount: orderAmount,
         currency,
@@ -87,7 +88,19 @@ export default function InstantOrder() {
         });
       }
     } else {
-      // Demo order
+      // Demo order — still registered with the backend as a practice scenario.
+      try {
+        await createOrder({
+          email: user.email,
+          symbol,
+          side,
+          amount: orderAmount,
+          currency,
+          accountType: 'demo',
+        });
+      } catch {
+        /* backend unreachable — the context notice already explains it */
+      }
       setPopup({
         kind: 'order',
         title: 'Demo Scenario Active',

@@ -19,6 +19,17 @@ A responsive crypto market, wallet desk, and practice-trading web experience bui
 - **Instant Order Desk & Flight Lab**: Live chart scenarios, buy up / buy down controls, and multiplier mini-game.
 - **Deposit Experience**: UPI / Bank transfer (INR) and TRC20 (USDT) funding flows recorded in the Frozen Amount section.
 
+## Frontend ↔ Backend Integration
+
+The React frontend (`src/`) is fully driven by the Mudrexx Express backend (`server.mjs`) — the backend is the single source of truth for all trading and wallet controls:
+
+- **Auth & sessions**: sign-up / sign-in run through `POST /api/auth/register` and `POST /api/auth/login`; the session token is persisted in `localStorage` and re-validated against `GET /api/auth/me` on every visit.
+- **Wallet controls**: demo-to-real conversion, deposits, approvals, frozen releases, orders, staking vaults, demo grants and Flight Lab wagers all execute as backend calls via the typed client in `src/api.ts`. The UI refreshes from the backend after every mutation, so balances and the Frozen Amount section always reflect server state.
+- **Markets**: live quotes and klines are served by the backend from Binance public feeds with built-in fallback.
+- **Persistence**: user state is stored on disk at `server/data/users.json` (gitignored), so accounts survive backend restarts and redeploys.
+
+In development, Vite proxies `/api` to the Express server (`:8080`); in production, Express serves the built frontend from `dist/` on the same origin, so the frontend always talks to the backend relatively.
+
 ---
 
 ## Deploy to Render (render.com)
