@@ -173,3 +173,114 @@
 
 /* Small utility for angel enjoyment glow */
 .angel-label svg{color:#a78aff}
+
+/* === Neutral Trade Button - mentions both UP and DOWN, works on selection === */
+.submit-neutral{
+  background: linear-gradient(135deg,#1c1922 0%,#2d2640 100%);
+  color:#fff;
+  box-shadow:0 12px 30px #1c19224d,0 0 0 1px #ffffff0f;
+  border:1px solid #ffffff14;
+  justify-content:space-between;
+  padding:0 6px 0 10px;
+  height:64px;
+  position:relative;
+  overflow:hidden;
+  transition:.22s ease;
+}
+.submit-neutral:before{
+  content:'';
+  position:absolute;
+  inset:0;
+  background:linear-gradient(90deg,#7042f422,#ffffff08,#7042f422);
+  opacity:0;
+  transition:.3s;
+}
+.submit-neutral:hover{transform:translateY(-2px);box-shadow:0 18px 40px #1c19226a,0 0 0 1px #ffffff18}
+.submit-neutral:hover:before{opacity:1}
+.submit-neutral .neutral-both{
+  display:flex;
+  flex-direction:column;
+  gap:3px;
+  background:#ffffff12;
+  border-radius:8px;
+  padding:6px 7px;
+  flex-shrink:0;
+}
+.both-icon{
+  width:20px;height:20px;border-radius:6px;display:flex;align-items:center;justify-content:center;
+  color:#9a95a2;background:#ffffff08;transition:.2s;
+}
+.both-icon.up.selected{background:#e7f8f2;color:#158f69;box-shadow:0 2px 8px #158f6922}
+.both-icon.down.selected{background:#fff0f2;color:#d34b5b;box-shadow:0 2px 8px #d34b5b22}
+.neutral-center{
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  gap:2px;
+  padding:0 12px;
+  text-align:left;
+  min-width:0;
+}
+.neutral-center strong{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  font:800 13px 'Manrope';
+  letter-spacing:.04em;
+}
+.updown-label{opacity:.9}
+.updown-label:first-child{color:#7ee8c2}
+.updown-label:nth-child(3){color:#ff9aa2}
+.sep{opacity:.4;margin:0 1px}
+.trade-word{margin-left:6px;background:#7042f4;color:#fff;padding:2px 6px;border-radius:5px;font-size:10px;letter-spacing:.06em}
+.neutral-center small{
+  font-size:9px;
+  color:#a9a3b5;
+  font-weight:600;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  max-width:100%;
+}
+.neutral-right{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-shrink:0;
+}
+.neutral-amount{
+  background:#ffffff14;
+  padding:8px 10px;
+  border-radius:8px;
+  font:800 13px 'Manrope';
+}
+.neutral-badge{
+  padding:7px 9px;
+  border-radius:8px;
+  font:800 10px 'Manrope';
+  letter-spacing:.08em;
+  min-width:46px;
+  text-align:center;
+}
+.neutral-badge.up{background:#e7f8f2;color:#158f69;border:1px solid #c6efdf}
+.neutral-badge.down{background:#fff0f2;color:#d34b5b;border:1px solid #f5c2c6}
+
+/* Profit row - wrap for 6 options */
+.profit-row{flex-wrap:wrap;gap:6px}
+.profit-row button{flex:1 1 calc(33% - 6px);min-width:48px;padding:8px 4px;font-size:9px;border-radius:8px}
+.profit-row button.active{background:#1c1922;color:#fff;border-color:#1c1922;box-shadow:0 4px 12px #1c192220}
+.profit-row button:nth-child(4).active,.profit-row button:nth-child(5).active,.profit-row button:nth-child(6).active{
+  background:linear-gradient(135deg,#b45309,#d97706);
+  border-color:#b45309;
+  color:#fff;
+  box-shadow:0 4px 14px #b4530940;
+}
+
+@media (max-width:470px){
+  .submit-neutral{height:58px;padding:0 5px 0 8px}
+  .neutral-center strong{font-size:11px}
+  .neutral-center small{font-size:8px}
+  .neutral-amount{padding:6px 8px;font-size:11px}
+  .profit-row button{flex:1 1 calc(50% - 6px)}
+}

@@ -21,7 +21,7 @@ export default function InstantOrder() {
   const [currency, setCurrency] = useState<'INR' | 'USDT'>('INR');
   const [amount, setAmount] = useState('1000');
   const [duration, setDuration] = useState(60);
-  const [profitTarget, setProfitTarget] = useState(5);
+  const [profitTarget, setProfitTarget] = useState(10);
   const [popup, setPopup] = useState<ResultPopup | null>(null);
   const { quote } = useMarket();
   const market = quote(symbol);
@@ -30,7 +30,7 @@ export default function InstantOrder() {
   const chooseSymbol = (next: string) => { setSymbol(next); setParams({ asset: next }); };
   const submitOrder = () => {
     if (!user) { openAuth('signin'); return; }
-    setPopup({ kind: 'order', title: 'Order preview created', copy: `${side === 'up' ? 'BUY UP' : 'BUY DOWN'} ${symbol} at ${money(market.price)} for ${duration < 60 ? `${duration}s` : `${duration / 60}m`}. No real order was sent.` });
+    setPopup({ kind: 'order', title: 'Order preview created', copy: `${side === 'up' ? 'BUY UP' : 'BUY DOWN'} ${symbol} at ${money(market.price)} for ${duration < 60 ? `${duration}s` : `${duration / 60}m`} with ${profitTarget}% target. No real order was sent.` });
   };
 
   return (
@@ -55,10 +55,33 @@ export default function InstantOrder() {
             <div className="field-label"><span>2. Order amount</span><small>Min. {currency === 'INR' ? '₹100' : '1 USDT'}</small></div>
             <div className="amount-field"><span>{currency === 'INR' ? '₹' : '₮'}</span><input type="number" min={currency === 'INR' ? 100 : 1} value={amount} onChange={(event) => setAmount(event.target.value)} /><div className="unit-select"><button className={currency === 'INR' ? 'active' : ''} onClick={() => setCurrency('INR')}>INR</button><button className={currency === 'USDT' ? 'active' : ''} onClick={() => setCurrency('USDT')}>USDT</button></div></div>
             <div className="quick-amounts">{(currency === 'INR' ? [500, 1000, 2500, 5000] : [10, 25, 50, 100]).map((value) => <button key={value} onClick={() => setAmount(String(value))}>+{value}</button>)}</div>
-            <div className="form-grid"><div><div className="field-label"><span>3. Time</span></div><div className="choice-row">{[30, 60, 180, 300].map((value) => <button className={duration === value ? 'active' : ''} key={value} onClick={() => setDuration(value)}>{value < 60 ? `${value}s` : `${value / 60}m`}</button>)}</div></div><div><div className="field-label"><span>4. Profit target</span></div><div className="choice-row">{[3, 5, 10].map((value) => <button className={profitTarget === value ? 'active' : ''} key={value} onClick={() => setProfitTarget(value)}>{value}%</button>)}</div></div></div>
-            <div className="order-summary"><span><small>Live rate</small><strong>1 {symbol} = {money(currency === 'INR' ? market.price * INR_RATE : market.price, currency === 'INR' ? 'INR' : 'USD')}</strong></span><span><small>Est. target value</small><strong>{currency === 'INR' ? '₹' : '₮'}{(Number(amount || 0) * (1 + profitTarget / 100)).toLocaleString()}</strong></span></div>
-            <button className={`submit-order submit-${side}`} onClick={submitOrder}>{side === 'up' ? <ArrowUp /> : <ArrowDown />} {side === 'up' ? 'BUY UP' : 'BUY DOWN'} <span>{currency === 'INR' ? '₹' : '₮'}{Number(amount || 0).toLocaleString()}</span></button>
-            <p className="preview-note"><Info /> This creates a practice preview only. It does not place an exchange order or promise a return.</p>
+            <div className="form-grid"><div><div className="field-label"><span>3. Time</span></div><div className="choice-row">{[30, 60, 180, 300].map((value) => <button className={duration === value ? 'active' : ''} key={value} onClick={() => setDuration(value)}>{value < 60 ? `${value}s` : `${value / 60}m`}</button>)}</div></div><div><div className="field-label"><span>4. Profit target</span><small style={{fontSize:'8px',color:'#9a949f'}}>High yield</small></div><div className="choice-row profit-row">{[3, 5, 10, 25, 40, 60].map((value) => <button className={profitTarget === value ? 'active' : ''} key={value} onClick={() => setProfitTarget(value)}>{value}%</button>)}</div></div></div>
+            <div className="order-summary"><span><small>Live rate</small><strong>1 {symbol} = {money(currency === 'INR' ? market.price * INR_RATE : market.price, currency === 'INR' ? 'INR' : 'USD')}</strong></span><span><small>Est. target value</small><strong>{currency === 'INR' ? '₹' : '₮'}{(Number(amount || 0) * (1 + profitTarget / 100)).toLocaleString()} <em style={{fontStyle:'normal',fontSize:'9px',color:profitTarget>=25?'#b45309':'#6b7280'}}>• +{profitTarget}%</em></strong></span><span><small>Direction</small><strong style={{display:'flex',alignItems:'center',gap:'4px'}}>{side==='up'?<ArrowUp size={12} color="#158f69"/>:<ArrowDown size={12} color="#d34b5b"/>} {side==='up'?'BUY UP':'BUY DOWN'} <span style={{fontSize:'8px',background:side==='up'?'#e7f8f2':'#fff0f2',color:side==='up'?'#158f69':'#d34b5b',padding:'2px 5px',borderRadius:'4px'}}>{profitTarget}% profit</span></strong></span></div>
+
+            {/* Neutral Final Trade Button - mentions both UP and DOWN, works on selection */}
+            <button className="submit-order submit-neutral" onClick={submitOrder} aria-label={`Confirm ${side} trade`}>
+              <span className="neutral-both">
+                <span className={`both-icon up ${side==='up'?'selected':''}`}><ArrowUp size={14}/></span>
+                <span className={`both-icon down ${side==='down'?'selected':''}`}><ArrowDown size={14}/></span>
+              </span>
+              <span className="neutral-center">
+                <strong>
+                  <span className="updown-label">UP</span>
+                  <span className="sep">/</span>
+                  <span className="updown-label">DOWN</span>
+                  <span className="trade-word">TRADE</span>
+                </strong>
+                <small>
+                  {side==='up' ? 'Executing: BUY UP' : 'Executing: BUY DOWN'} • {profitTarget}% target
+                </small>
+              </span>
+              <span className="neutral-right">
+                <span className="neutral-amount">{currency === 'INR' ? '₹' : '₮'}{Number(amount || 0).toLocaleString()}</span>
+                <span className={`neutral-badge ${side}`}>{side==='up'?'UP':'DOWN'}</span>
+              </span>
+            </button>
+
+            <p className="preview-note"><Info /> This creates a practice preview only. It does not place an exchange order or promise a return. Neutral button executes selected direction.</p>
           </div>
         </aside>
       </section>
