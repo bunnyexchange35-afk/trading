@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: mudrexx-earn
+    env: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: VITE_TELEGRAM_URL
+        sync: false
+    healthCheckPath: /api/health
+    autoDeploy: false
