@@ -308,6 +308,29 @@ Toggles demo account linking status.
 
 ---
 
+### `POST /api/wallet/demo/adjust`
+Adjusts the demo practice balance (used by the Flight Lab game for wagers and cash-outs). Negative deltas are rejected when they exceed the available demo credits.
+
+**Request Body:**
+```json
+{
+  "email": "rahul@example.com",
+  "delta": -250
+}
+```
+
+**Response `200 OK`:**
+```json
+{
+  "success": true,
+  "message": "Demo balance adjusted by -250 credits",
+  "delta": -250,
+  "newDemoBalance": 9750
+}
+```
+
+---
+
 ## 6. Deposits & Withdrawals APIs
 
 ### `POST /api/deposit/submit`
@@ -371,3 +394,9 @@ Locks funds in a flexible staking vault earning daily APY yield in the Frozen Am
   "apy": 4.7
 }
 ```
+
+---
+
+## 8. Data Store & Persistence
+
+The backend keeps all user accounts, wallets, transactions and frozen items in an in-memory store that is **persisted to disk at `server/data/users.json`** (gitignored) with debounced atomic writes. State therefore survives backend restarts and redeploys. The frontend treats the backend as the single source of truth: every wallet control (deposits, conversions, orders, staking, releases, demo grants, Flight Lab wagers) executes through the endpoints above, and the UI re-syncs from `GET /api/auth/me` after every mutation.

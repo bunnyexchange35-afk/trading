@@ -21,7 +21,7 @@ export default function Deposit() {
   const { user, openAuth, addDeposit, notify } = useApp();
   const navigate = useNavigate();
 
-  const submit = (event: FormEvent<HTMLFormElement>) => {
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!user) {
       openAuth('signin');
@@ -35,8 +35,8 @@ export default function Deposit() {
     }
 
     const ref = utr || (method === 'upi' ? `UPI-${Date.now().toString().slice(-6)}` : `UTR-${Date.now().toString().slice(-8)}`);
-    addDeposit(amt, rail, method, ref);
-    setDone(true);
+    const submitted = await addDeposit(amt, rail, method, ref);
+    if (submitted) setDone(true);
   };
 
   const copy = (value: string) => {

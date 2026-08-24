@@ -344,7 +344,7 @@ export function AuthModal() {
 
   if (!authMode) return null;
 
-  const submit = (event: FormEvent<HTMLFormElement>) => {
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const email = String(data.get('email') || 'member@example.com');
@@ -352,8 +352,8 @@ export function AuthModal() {
     const isSignup = mode === 'signup';
 
     setLoading(true);
-    window.setTimeout(() => {
-      authenticate({ name: fullName, email }, isSignup);
+    try {
+      await authenticate({ name: fullName, email }, isSignup);
       notify(
         isSignup ? 'Account registered! 🎉' : 'Welcome back!',
         isSignup
@@ -361,15 +361,18 @@ export function AuthModal() {
           : 'Your Mudrexx Earn session is active.',
         'success'
       );
-      setLoading(false);
       navigate('/wallet');
-    }, 450);
+    } catch {
+      /* the context already surfaced the backend error */
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const quickDemoLogin = () => {
+  const quickDemoLogin = async () => {
     setLoading(true);
-    window.setTimeout(() => {
-      authenticate(
+    try {
+      await authenticate(
         { name: 'Demo Trader', email: 'demotrader@mudrexx.com' },
         true
       );
@@ -378,9 +381,12 @@ export function AuthModal() {
         'Registered with ₹0.00 initial balance and 10,000 demo credits.',
         'success'
       );
-      setLoading(false);
       navigate('/wallet');
-    }, 300);
+    } catch {
+      /* the context already surfaced the backend error */
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -477,7 +483,7 @@ export function ConversionModal() {
   const parsed = Math.max(0, Number(amount) || 0);
   const gain = Math.round(parsed * rate * 100) / 100;
 
-  const handleConvert = (e: FormEvent) => {
+  const handleConvert = async (e: FormEvent) => {
     e.preventDefault();
     if (parsed <= 0) {
       notify('Invalid amount', 'Enter demo credits to convert.', 'warning');
@@ -487,8 +493,8 @@ export function ConversionModal() {
       notify('Insufficient Demo Credits', `Available: ${demoCredits.toLocaleString()}`, 'warning');
       return;
     }
-    convertDemoToReal(parsed);
-    closeConversionModal();
+    const result = await convertDemoToReal(parsed);
+    if (result.success) closeConversionModal();
   };
 
   const setPercent = (pct: number) => {
