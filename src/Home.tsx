@@ -1,12 +1,160 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   ArrowRight, BarChart3, Blocks, Check, ChevronRight, CircleDollarSign, Clock3, Globe2,
   Landmark, LineChart, LockKeyhole, Play, ShieldCheck, Sparkles, TrendingUp, WalletCards,
+  Music, Headphones, Zap
 } from 'lucide-react';
 import { CoinIcon } from './components';
 import { INR_RATE, money } from './data';
 import { useMarket } from './market-context';
 import { useApp } from './app-context';
+
+function TradeCenterStage() {
+  const navigate = useNavigate();
+  const { user, openAuth } = useApp();
+  const handleTrade = () => {
+    if (!user) { openAuth('signup'); return; }
+    navigate('/instant-order');
+  };
+  return (
+    <section className="trade-center-section">
+      <div className="container trade-center-container">
+        <div className="trade-center-label">
+          <span className="eyebrow">Feel the rhythm</span>
+          <h2>Trade in tune with the market</h2>
+          <p>Tap to start — live pricing, instant preview, zero noise.</p>
+        </div>
+        <div className="trade-stage">
+          {/* Sound waves */}
+          <div className="sound-waves">
+            <span className="wave wave-1" />
+            <span className="wave wave-2" />
+            <span className="wave wave-3" />
+            <span className="wave wave-4" />
+            <span className="wave wave-5" />
+          </div>
+
+          {/* Central Trade Button */}
+          <div className="trade-center-core">
+            <button className="trade-center-btn" onClick={handleTrade} aria-label="Trade now">
+              <span className="trade-btn-glow" />
+              <span className="trade-btn-inner">
+                <Zap size={22} />
+                <b>TRADE</b>
+                <small>LIVE</small>
+              </span>
+            </button>
+            <div className="trade-orbit orbit-1" />
+            <div className="trade-orbit orbit-2" />
+          </div>
+
+          {/* Little Angel enjoying music */}
+          <div className="music-angel-wrap">
+            <div className="music-notes">
+              <i className="note n1">♪</i>
+              <i className="note n2">♫</i>
+              <i className="note n3">♪</i>
+              <i className="note n4">♫</i>
+            </div>
+            <div className="angel">
+              <div className="angel-halo" />
+              <div className="angel-wings">
+                <i className="wing left" />
+                <i className="wing right" />
+              </div>
+              <div className="angel-head">
+                <div className="angel-face">
+                  <span className="eye closed left" />
+                  <span className="eye closed right" />
+                  <span className="smile" />
+                  <span className="blush left" />
+                  <span className="blush right" />
+                </div>
+                <div className="angel-hair" />
+                <div className="angel-headphones">
+                  <i className="hp-band" />
+                  <i className="hp-cup left"><Headphones size={10} /></i>
+                  <i className="hp-cup right"><Headphones size={10} /></i>
+                </div>
+              </div>
+              <div className="angel-body">
+                <div className="angel-robe" />
+                <div className="angel-arms">
+                  <i className="arm left" />
+                  <i className="arm right" />
+                </div>
+              </div>
+              <div className="angel-music-bar">
+                <i /><i /><i /><i />
+              </div>
+            </div>
+            <div className="angel-shadow" />
+            <div className="angel-label">
+              <Music size={12} /> vibing to market beats
+            </div>
+          </div>
+
+          {/* Floating mini coins around */}
+          <div className="trade-floaters">
+            <span className="tf tf-btc">₿</span>
+            <span className="tf tf-eth">Ξ</span>
+            <span className="tf tf-sol">S</span>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function PingPongMobile() {
+  return (
+    <section className="pingpong-mobile-section">
+      <div className="container">
+        <div className="pp-header">
+          <span className="pp-kicker"><span className="pp-dot" /> Live in mobile</span>
+          <h3>Ping-pong markets</h3>
+          <p>Quick bounce, just like price action on your phone.</p>
+        </div>
+        <div className="pp-arena">
+          <div className="pp-table-surface">
+            <div className="pp-table-inner">
+              <div className="pp-center-line" />
+              <div className="pp-net">
+                <i />
+                <i />
+                <i />
+                <i />
+                <i />
+              </div>
+              <div className="pp-ball" />
+              <div className="pp-paddle pp-left">
+                <span className="paddle-face" />
+                <span className="paddle-handle" />
+              </div>
+              <div className="pp-paddle pp-right">
+                <span className="paddle-face" />
+                <span className="paddle-handle" />
+              </div>
+            </div>
+            <div className="pp-table-edge" />
+          </div>
+          <div className="pp-score">
+            <span>12</span>
+            <em>:</em>
+            <span>09</span>
+          </div>
+          <div className="pp-crowd">
+            <i /><i /><i /><i /><i />
+          </div>
+        </div>
+        <div className="pp-cta">
+          <span>Tap to trade while you play</span>
+          <Link to="/instant-order" className="btn btn-dark btn-sm">Open desk <ArrowRight size={14} /></Link>
+        </div>
+      </div>
+    </section>
+  );
+}
 
 export default function Home() {
   const { quotes, source } = useMarket();
@@ -21,7 +169,7 @@ export default function Home() {
             <div className="hero-kicker"><span><i /> Live markets</span><b>Powered by Binance public data</b></div>
             <h1>Make your next<br />crypto move with <em>clarity.</em></h1>
             <p>Buy, follow, and understand digital assets from one thoughtfully designed experience. Built for speed, made for everyone.</p>
-            <div className="hero-actions"><button className="btn btn-purple btn-lg" onClick={() => openAuth('signup')}>Start earning <ArrowRight size={18} /></button><Link to="/market" className="btn btn-soft btn-lg">Explore market <BarChart3 size={18} /></Link></div>
+            <div className="hero-actions"><button className="btn btn-purple btn-lg" onClick={() => openAuth('signup')}>Start earning <ArrowRight size={18} /></button><Link to="/market" className="btn btn-soft btn-lg\">Explore market <BarChart3 size={18} /></Link></div>
             <div className="hero-trust"><span><ShieldCheck /> Security-first experience</span><span><Clock3 /> Live 24/7 pricing</span></div>
           </div>
           <div className="hero-visual">
@@ -41,6 +189,12 @@ export default function Home() {
         </div>
         <button className="watch-intro" onClick={() => window.dispatchEvent(new Event('replay-intro'))}><Play size={14} fill="currentColor" /> Watch 30s experience</button>
       </section>
+
+      {/* Ping Pong Animation - Mobile Only */}
+      <PingPongMobile />
+
+      {/* Trade Button Centre with Sound Waves + Angel */}
+      <TradeCenterStage />
 
       <section className="ticker-section">
         <div className="container">

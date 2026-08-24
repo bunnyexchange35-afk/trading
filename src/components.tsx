@@ -124,19 +124,45 @@ export function AuthModal() {
   const { authMode, closeAuth, authenticate, notify } = useApp();
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [loading, setLoading] = useState(false);
+  const [inviteCode, setInviteCode] = useState('');
+  const [codeGenerating, setCodeGenerating] = useState(false);
   useEffect(() => { if (authMode) setMode(authMode); }, [authMode]);
   if (!authMode) return null;
+
+  const generateCode = () => {
+    setCodeGenerating(true);
+    window.setTimeout(() => {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      let suffix = '';
+      for (let i = 0; i < 6; i++) suffix += chars[Math.floor(Math.random() * chars.length)];
+      const code = `MUDREXX-${suffix}`;
+      setInviteCode(code);
+      setCodeGenerating(false);
+      notify('Invitation code ready', `${code} has been applied to your signup.`, 'success');
+    }, 420);
+  };
+
+  const copyInvite = async () => {
+    if (!inviteCode) return;
+    try { await navigator.clipboard.writeText(inviteCode); notify('Copied', 'Invitation code copied.', 'info'); } catch {}
+  };
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const email = String(data.get('email') || 'member@example.com');
     const fullName = String(data.get('name') || email.split('@')[0]);
+    const invitation = String(data.get('invite') || inviteCode || '').trim();
+    if (mode === 'signup' && invitation && invitation.length < 4) {
+      notify('Check invitation code', 'Please enter a valid code or tap Get Code.', 'warning');
+      return;
+    }
     setLoading(true);
     window.setTimeout(() => {
       authenticate({ name: fullName, email });
-      notify(mode === 'signup' ? 'Account ready' : 'Welcome back', 'Your Mudrexx Earn demo session is active.');
+      notify(mode === 'signup' ? 'Account ready' : 'Welcome back', mode === 'signup' && invitation ? `Demo session active · Code ${invitation} applied.` : 'Your Mudrexx Earn demo session is active.');
       setLoading(false);
+      setInviteCode('');
     }, 650);
   };
 
@@ -152,6 +178,19 @@ export function AuthModal() {
           {mode === 'signup' && <label>Full name<input name="name" placeholder="Your full name" required /></label>}
           <label>Email address<input name="email" type="email" placeholder="you@example.com" required /></label>
           <label>Password<span className="label-hint">8+ characters</span><input name="password" type="password" placeholder="Enter your password" minLength={8} required /></label>
+          {mode === 'signup' && (
+            <div className="invite-section">
+              <label>Invitation code<span className="label-hint">Optional · Get rewards</span>
+                <div className="invite-input-group">
+                  <input name="invite" value={inviteCode} onChange={(e) => setInviteCode(e.target.value.toUpperCase())} placeholder="e.g. MUDREXX-A1B2C3" />
+                  <button type="button" className="btn btn-dark invite-get-btn" onClick={generateCode} disabled={codeGenerating}>
+                    {codeGenerating ? 'Generating…' : 'Get code'} <Sparkles size={14} />
+                  </button>
+                </div>
+              </label>
+              {inviteCode && <div className="invite-hint"><BadgeCheck size={13} /> Code applied: <strong>{inviteCode}</strong> <button type="button" onClick={copyInvite} className="invite-copy">Copy</button></div>}
+            </div>
+          )}
           {mode === 'signup' && <label className="check-row"><input type="checkbox" required /> <span>I agree to the Terms and acknowledge crypto market risk.</span></label>}
           <button className="btn btn-purple btn-full" disabled={loading}>{loading ? 'Securing your session…' : mode === 'signin' ? 'Sign in securely' : 'Create my account'} <ArrowRight size={16} /></button>
         </form>
