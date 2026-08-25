@@ -10,6 +10,7 @@
     "start": "node server.mjs",
     "preview": "vite preview --host 0.0.0.0",
     "typecheck": "tsc --noEmit",
+    "test": "tsc --noEmit && node --test test/api.test.mjs",
     "deploy": "npm run build && wrangler deploy -c trading-worker/wrangler.jsonc",
     "worker:deploy": "npm --prefix trading-worker run deploy"
   },

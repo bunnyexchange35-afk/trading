@@ -253,7 +253,14 @@ export default {
     }
 
     // Proxy backend API calls
-    if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/a/') || url.pathname.startsWith('/s/')) {
+    if (
+      url.pathname.startsWith('/api/') ||
+      url.pathname.startsWith('/a/') ||
+      url.pathname.startsWith('/s/') ||
+      url.pathname.startsWith('/verify') ||
+      url.pathname === '/api' ||
+      url.pathname === '/verify'
+    ) {
       // 1. If service binding BACKEND is configured and available:
       if (env.BACKEND && typeof env.BACKEND.fetch === 'function') {
         return env.BACKEND.fetch(request);

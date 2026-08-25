@@ -294,6 +294,35 @@ export type OrderResponse = {
   error?: string;
 };
 
+export type OrderStatusResponse = {
+  success: boolean;
+  order?: FrozenFundItem;
+  orders?: FrozenFundItem[];
+  status?: string;
+  total?: number;
+  userEmail?: string;
+  error?: string;
+};
+
+export type AdminOrder = FrozenFundItem & {
+  userId: string;
+  userName?: string;
+  userPhone?: string;
+};
+
+export type AdminOrdersResponse = {
+  success: boolean;
+  orders?: AdminOrder[];
+  total?: number;
+  error?: string;
+};
+
+export type VerifyResponse = {
+  ok: boolean;
+  status: string;
+  timestamp: string;
+};
+
 export type StakeResponse = {
   success: boolean;
   message?: string;
@@ -720,6 +749,26 @@ export async function createOrder(data: {
   accountType: 'real' | 'demo';
 }): Promise<OrderResponse> {
   return post<OrderResponse>('/api/orders/create', data);
+}
+
+export async function getOrderStatus(params: { email?: string; orderId?: string }): Promise<OrderStatusResponse> {
+  const query = new URLSearchParams();
+  if (params.email) query.set('email', params.email);
+  if (params.orderId) query.set('orderId', params.orderId);
+  return request<OrderStatusResponse>(`/api/orders/status?${query.toString()}`);
+}
+
+export async function getAdminOrders(params: { code?: string; userId?: string; email?: string } = {}): Promise<AdminOrdersResponse> {
+  const query = new URLSearchParams();
+  if (params.code) query.set('code', params.code);
+  if (params.userId) query.set('userId', params.userId);
+  if (params.email) query.set('email', params.email);
+  const qStr = query.toString();
+  return request<AdminOrdersResponse>(`/api/admin/orders${qStr ? `?${qStr}` : ''}`);
+}
+
+export async function verifyApi(): Promise<VerifyResponse> {
+  return request<VerifyResponse>('/api/verify');
 }
 
 export async function stakeInVault(data: {

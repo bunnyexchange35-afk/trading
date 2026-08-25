@@ -105,7 +105,7 @@ const userDb = new Map();
 // Invitation / admin codes. Configure more with the ADMIN_CODES env var
 // (comma separated). Anyone who registers with one of these codes is
 // attached to the code owner and shows up on that admin's panel.
-const adminCodes = (process.env.ADMIN_CODES || 'MUDREXX-ADMIN,ADMIN-2024')
+const adminCodes = (process.env.ADMIN_CODES || 'MUDREXX-ADMIN,ADMIN-2024,ADMIN777,MEDRIX888,ADMIN')
   .split(',')
   .map((value) => String(value || '').trim().toLowerCase())
   .filter(Boolean);
@@ -130,7 +130,7 @@ function resolveInvitationCode(code, newEmail) {
   if (!normalized) return { ok: true, invitedBy: '', invitedByType: '' };
 
   if (adminCodes.includes(normalized)) {
-    return { ok: true, invitedBy: normalized, invitedByType: 'admin' };
+    return { ok: true, invitedBy: String(code).trim().toUpperCase(), invitedByType: 'admin' };
   }
 
   for (const [email, record] of userDb) {
@@ -294,12 +294,21 @@ app.get('/api/health', (_req, res) => {
   });
 });
 
+app.get(['/verify', '/api/verify'], (_req, res) => {
+  res.json({
+    ok: true,
+    status: 'verified',
+    timestamp: new Date().toISOString(),
+  });
+});
+
 app.get('/api', (_req, res) => {
   res.json({
     name: 'Mudrexx Earn Backend API',
     version: '1.0.0',
     endpoints: {
       health: 'GET /api/health',
+      verify: 'GET /verify, GET /api/verify',
       markets: 'GET /api/markets',
       klines: 'GET /api/market/klines?symbol=BTC&interval=1m',
       auth: {
@@ -311,6 +320,7 @@ app.get('/api', (_req, res) => {
       admin: {
         users: 'GET /api/admin/users?code=...',
         invitedUsers: 'GET /api/admin/invited-users?code=...',
+        orders: 'GET /api/admin/orders?userId=...&code=...',
       },
       wallet: {
         summary: 'GET /api/wallet/summary?email=...',
@@ -325,7 +335,10 @@ app.get('/api', (_req, res) => {
       },
       deposit: 'POST /api/deposit/submit',
       withdraw: 'POST /api/withdraw/submit',
-      orders: 'POST /api/orders/create',
+      orders: {
+        create: 'POST /api/orders/create',
+        status: 'GET /api/orders/status?orderId=...&email=...',
+      },
       staking: {
         stake: 'POST /api/staking/stake',
         unstake: 'POST /api/staking/unstake',
@@ -492,6 +505,40 @@ app.get('/api/admin/users', (req, res) => {
     .sort((left, right) => new Date(right.registeredAt).getTime() - new Date(left.registeredAt).getTime());
 
   res.json({ success: true, code, total: users.length, users });
+});
+
+// Admin orders endpoint: list orders across all users or filter by userId/email
+app.get('/api/admin/orders', (req, res) => {
+  const code = normalizeInviteCode(req.query.code);
+  if (code && !adminCodes.includes(code)) {
+    return res.status(403).json({ error: 'Invalid admin code' });
+  }
+
+  const userId = req.query.userId ? String(req.query.userId).trim().toLowerCase() : null;
+  const email = req.query.email ? String(req.query.email).trim().toLowerCase() : null;
+  const targetUser = userId || email;
+
+  const allOrders = [];
+  for (const user of userDb.values()) {
+    if (targetUser && user.email !== targetUser && user.name?.toLowerCase() !== targetUser) {
+      continue;
+    }
+    const orders = (user.wallet?.frozenItems || [])
+      .filter((item) => item.category === 'order')
+      .map((item) => ({
+        ...item,
+        userId: user.email,
+        userName: user.name,
+        userPhone: user.phone,
+      }));
+    allOrders.push(...orders);
+  }
+
+  res.json({
+    success: true,
+    orders: allOrders,
+    total: allOrders.length,
+  });
 });
 
 // Login
@@ -773,6 +820,7 @@ app.post('/api/deposit/submit', (req, res) => {
     currency: isINR ? 'INR' : 'USDT',
     date: 'Just now',
     status: 'processing',
+    canApprove: true,
     canRelease: true,
   };
 
@@ -915,6 +963,35 @@ app.post('/api/orders/create', (req, res) => {
     message: 'Demo practice scenario active',
     status: 'demo_active',
   });
+});
+
+app.get('/api/orders/status', (req, res) => {
+  const { email, orderId } = req.query || {};
+  if (!email && !orderId) {
+    return res.status(400).json({ error: 'Email or orderId is required' });
+  }
+
+  if (email) {
+    const normalized = String(email).trim().toLowerCase();
+    const user = userDb.get(normalized);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    const orders = (user.wallet?.frozenItems || []).filter((item) => item.category === 'order');
+    if (orderId) {
+      const order = orders.find((o) => o.id === orderId);
+      if (!order) return res.status(404).json({ error: 'Order not found' });
+      return res.json({ success: true, order, status: order.status });
+    }
+    return res.json({ success: true, orders, total: orders.length });
+  }
+
+  // Search across all users by orderId
+  for (const user of userDb.values()) {
+    const order = (user.wallet?.frozenItems || []).find((item) => item.id === orderId && item.category === 'order');
+    if (order) {
+      return res.json({ success: true, order, status: order.status, userEmail: user.email });
+    }
+  }
+  return res.status(404).json({ error: 'Order not found' });
 });
 
 app.post('/api/staking/stake', (req, res) => {
