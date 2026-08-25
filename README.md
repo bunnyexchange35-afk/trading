@@ -101,7 +101,7 @@ needed. Set it up in the Cloudflare dashboard:
    - **Create application -> Get started -> Import a repository**, selecting this
      repo and the `main` branch, or
    - For an existing Worker, open it -> **Settings -> Builds -> Connect**.
-2. Make sure the Worker name in the dashboard matches `trading-worker` (the name
+2. Make sure the Worker name in the dashboard matches `trading` (the name
    in `trading-worker/wrangler.jsonc`), or the build will fail.
 3. In **Settings -> Build**, set:
    - **Build command**: `npm run build`
