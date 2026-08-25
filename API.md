@@ -25,30 +25,33 @@ Health check probe for uptime monitoring and hosting platforms.
 ---
 
 ### `GET /api/markets`
-Fetches live 24-hour ticker quotes and staking APYs for tracked cryptocurrency assets (BTC, ETH, BNB, SOL, XRP, ETC, ADA, DOGE) from Binance public data feeds with built-in cache and fallback.
+Fetches live 24-hour quotes and A/B staking vault APYs for 32 tracked assets from Coinbase Exchange public data feeds, with an in-process cache and a warm-cache fallback. Served natively by the Cloudflare Worker (or by `server.mjs` locally) — no backend origin required.
 
 **Response `200 OK`:**
 ```json
 {
-  "source": "binance",
+  "source": "coinbase",
   "cached": false,
   "data": [
     {
       "symbol": "BTC",
       "name": "Bitcoin",
-      "color": "#f7931a",
-      "soft": "#fff4e4",
+      "color": "#F7931A",
+      "soft": "#2A1E0A",
       "mark": "₿",
       "stakingApy": 2.8,
+      "stakingApyLocked": 3.6,
       "price": 116430.2,
       "change": 2.84,
       "high": 120505.25,
       "low": 112704.43,
-      "volume": 3310692737
+      "volume": 3310692737,
+      "pair": "BTC-USD"
     }
   ]
 }
 ```
+`source` is `coinbase` on a live feed, `fallback` when the provider is unreachable (prices then come from the bundled warm cache).
 
 ---
 
@@ -62,7 +65,8 @@ Fetches candlestick chart data for live charting.
 **Response `200 OK`:**
 ```json
 {
-  "source": "binance",
+  "source": "coinbase",
+  "pair": "BTC-USD",
   "data": [
     {
       "time": 1787548000000,

@@ -15,9 +15,40 @@ export function Logo({ light = false }: { light?: boolean }) {
   return (
     <Link to="/" className={`brand ${light ? 'brand-light' : ''}`} aria-label="Mudrexx Earn home">
       <span className="brand-mark">
-        <i />
-        <i />
-        <i />
+        <svg className="brand-mark-svg" viewBox="0 0 44 44" aria-hidden="true">
+          <defs>
+            <linearGradient id="mx-logo-grad" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stopColor="#D9FF57" />
+              <stop offset="1" stopColor="#2FE0A1" />
+            </linearGradient>
+          </defs>
+          <rect x="2" y="2" width="40" height="40" rx="12" fill="#0B0F0D" stroke="#262E29" strokeWidth="1.5" />
+          <path
+            d="M11 30V15l5.6 9L22 15v15"
+            fill="none"
+            stroke="url(#mx-logo-grad)"
+            strokeWidth="3.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M26.4 19l5.6-5.6M32 13.4h-4.7M32 13.4v4.7"
+            fill="none"
+            stroke="#D9FF57"
+            strokeWidth="2.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <circle cx="33" cy="26.8" r="4.6" fill="url(#mx-logo-grad)" />
+          <path
+            d="M31.2 26.9l1.3 1.7 2-3.2"
+            fill="none"
+            stroke="#0B0F0D"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
       </span>
       <span className="brand-copy">
         <b>Mudrexx</b>
@@ -242,7 +273,7 @@ export function SiteFooter() {
           <Logo light />
           <p>A clear, modern way to follow crypto markets, practise trading decisions, and convert demo gains.</p>
           <span className="feed-badge">
-            <i /> Binance public market feed
+            <i /> Coinbase live market feed
           </span>
         </div>
         <div>
@@ -695,7 +726,7 @@ export function EntryExperience() {
   const phase = elapsed < 3 ? 0 : elapsed < 6 ? 1 : elapsed < 8 ? 2 : 3;
   const copy = [
     ['Savings', 'Simple, Safe, Current Deposit, Earn Interest Immediately'],
-    ['Markets, brought to life', 'Spot, Futures, Staking — live Binance feeds in one desk.'],
+    ['Markets, brought to life', 'Spot, Futures, Staking — live Coinbase feeds in one desk.'],
     ['Trade with confidence', 'Practice now, then convert demo winnings into real INR.'],
     ['Welcome to Mudrexx Earn', 'Your exchange journey begins here.'],
   ][phase];

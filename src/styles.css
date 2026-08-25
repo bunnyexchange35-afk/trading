@@ -287,3 +287,33 @@
 @keyframes glowDrift{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(30px,20px) scale(1.08)}}
 @media (max-width:900px){.exchange-nav-pills{display:none}.exchange-showcase{grid-template-columns:1fr;padding:36px 28px;gap:24px}.exchange-card-scene{height:250px}.exchange-card{width:min(360px,100%);height:200px;transform:scale(.92)}.exchange-card-screen{height:96px}.screen-chart{height:44px}.exchange-chip.chip-1{right:0}.exchange-chip.chip-2{left:0}}
 @media (max-width:560px){.exchange-showcase{padding:28px 18px;border-radius:22px}.exchange-copy h1{font-size:36px}.exchange-card-scene{height:210px}.exchange-card{height:176px;padding:14px}.exchange-card-screen{height:78px}.screen-chart{height:34px}.screen-stats b{font-size:12px}.exchange-ticker{grid-template-columns:1fr 1fr}.exchange-ticker span{font-size:10px;padding:9px}}
+
+/* ========================================================================= */
+/* MUDREXX EARN 2.0 — MARKET & STAKING STRUCTURE                             */
+/* Structural layout for the expanded market desk (colors come from the      */
+/* theme layer).                                                             */
+/* ========================================================================= */
+.brand-mark-svg{width:100%;height:100%;display:block}
+.market-overview{grid-template-columns:repeat(4,1fr)}
+.market-overview .negative{color:var(--red)}
+.ticker-price{display:flex;flex-direction:column;gap:3px}
+.ticker-price small{font-size:10px;color:#8f8994;font-weight:600}
+.category-strip{display:flex;gap:8px;flex-wrap:wrap;padding:12px 18px;border-bottom:1px solid var(--border)}
+.category-strip button{border:1px solid #e1dee5;background:#fff;color:#716a77;border-radius:20px;padding:6px 13px;font-size:11px;font-weight:700;transition:.2s ease}
+.category-strip button:hover{border-color:#b9a7f5;color:#5d36d6}
+.category-strip button.active{background:#eee9ff;border-color:#cabbff;color:#6138dd}
+.market-table-head .vault-b{font-style:normal;background:#eee9ff;color:#6138dd;border-radius:6px;padding:1px 5px;margin-left:4px;font-size:8px}
+.apy-cell.apy-locked{color:var(--purple)}
+.market-empty{padding:44px 18px;text-align:center;color:#9a949f;font-size:13px}
+.vault-tier-toggle{display:flex;gap:6px;background:#f3f1f5;border:1px solid #e6e2ea;border-radius:12px;padding:4px}
+.vault-tier-toggle button{display:flex;align-items:center;gap:7px;border:0;background:transparent;color:#716a77;font-size:11px;font-weight:800;padding:8px 13px;border-radius:9px;transition:.2s ease}
+.vault-tier-toggle button span{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:6px;background:#e7e2ec;color:#716a77;font-size:10px}
+.vault-tier-toggle button.active{background:#fff;color:#3c2c6e;box-shadow:0 2px 8px #2b223410}
+.vault-tier-toggle button.active span{background:var(--purple);color:#fff}
+.scenario-strip{display:flex;align-items:center;gap:8px}
+.scenario-strip>span{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:800;padding:7px 12px;border-radius:9px;border:1px solid}
+.scenario-up{background:#e7f8f2;border-color:#bfe8d8;color:#14815f}
+.scenario-down{background:#fff0f2;border-color:#f3cfd6;color:#c23d50}
+.scenario-strip small{color:#9a949f;font-size:10px}
+@media (max-width:850px){.market-overview{grid-template-columns:1fr 1fr}.market-overview>div:nth-child(2){border-right:0}}
+@media (max-width:700px){.market-overview{grid-template-columns:1fr}.market-overview>div{border-right:0;border-bottom:1px solid #ffffff14;padding:14px 0}.market-overview>div:last-child{border-bottom:0}}

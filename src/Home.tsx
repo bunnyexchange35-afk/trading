@@ -27,7 +27,7 @@ export default function Home() {
               <span>
                 <i /> Live markets
               </span>
-              <b>Powered by Binance public data</b>
+              <b>Powered by Coinbase live data</b>
             </div>
             <h1>
               Make your next<br />crypto move with <em>clarity.</em>
@@ -159,7 +159,8 @@ export default function Home() {
                   </span>
                 </div>
                 <div className="ticker-price">
-                  <strong>{money(quote.price)}</strong>
+                  <strong>{money(quote.price * INR_RATE, 'INR')}</strong>
+                  <small>{money(quote.price)} USDT</small>
                   <span className={quote.change >= 0 ? 'up' : 'down'}>
                     {quote.change >= 0 ? '+' : ''}
                     {quote.change.toFixed(2)}%
@@ -200,14 +201,14 @@ export default function Home() {
               <h3>
                 Own the assets<br />you believe in.
               </h3>
-              <p>Explore eight leading assets with live prices, simple insights, and a focused order flow.</p>
+              <p>Explore thirty-plus leading assets with live Coinbase prices, category filters, and a focused order flow.</p>
               <Link to="/market">
                 Explore spot <ArrowRight size={16} />
               </Link>
               <div className="product-art spot-art">
                 <div className="spot-card">
                   <small>Bitcoin</small>
-                  <strong>{money(quotes[0].price)}</strong>
+                  <strong>{money(quotes[0].price * INR_RATE, 'INR')}</strong>
                   <span>+{quotes[0].change.toFixed(2)}%</span>
                 </div>
                 <div className="spot-bars">
@@ -246,7 +247,7 @@ export default function Home() {
               <h3>
                 Put idle assets<br />to work.
               </h3>
-              <p>Compare indicative staking rates and understand each vault before you choose.</p>
+              <p>Compare A-tier flexible and B-tier locked DeFi staking rates before you choose a vault.</p>
               <Link to="/market?tab=staking">
                 Discover staking <ArrowRight size={16} />
               </Link>
@@ -254,15 +255,15 @@ export default function Home() {
                 <div>
                   <CoinIcon asset={quotes[1]} />
                   <span>
-                    <small>ETH vault</small>
-                    <strong>4.7% APY</strong>
+                    <small>ETH vault · B tier</small>
+                    <strong>6.2% APY</strong>
                   </span>
                 </div>
                 <div>
                   <CoinIcon asset={quotes[3]} />
                   <span>
-                    <small>SOL vault</small>
-                    <strong>6.9% APY</strong>
+                    <small>SOL vault · B tier</small>
+                    <strong>8.4% APY</strong>
                   </span>
                 </div>
               </div>
