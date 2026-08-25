@@ -2,6 +2,17 @@ import { useEffect } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { AppProvider } from './app-context';
 import { MarketProvider } from './market-context';
+
+function SpaceBackdrop() {
+  return (
+    <div className="space-backdrop" aria-hidden="true">
+      <span className="stars stars-a" />
+      <span className="stars stars-b" />
+      <span className="nebula nebula-a" />
+      <span className="nebula nebula-b" />
+    </div>
+  );
+}
 import {
   AuthModal,
   ContactButton,
@@ -53,12 +64,17 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <AppProvider>
-        <MarketProvider>
-          <AppRoutes />
-        </MarketProvider>
-      </AppProvider>
-    </BrowserRouter>
+    <div className="space-app">
+      <SpaceBackdrop />
+      <div className="space-content">
+        <BrowserRouter>
+          <AppProvider>
+            <MarketProvider>
+              <AppRoutes />
+            </MarketProvider>
+          </AppProvider>
+        </BrowserRouter>
+      </div>
+    </div>
   );
 }
