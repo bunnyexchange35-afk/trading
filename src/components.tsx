@@ -47,7 +47,7 @@ export function SiteHeader() {
   const [profile, setProfile] = useState(false);
   const location = useLocation();
   const profileRef = useRef<HTMLDivElement>(null);
-  const { user, openAuth, signOut, notify, openConversionModal } = useApp();
+  const { user, openAuth, signOut, notify, openConversionModal, accessRequired, backendContract, accessType } = useApp();
 
   useEffect(() => {
     setMenu(false);
@@ -76,10 +76,24 @@ export function SiteHeader() {
 
   return (
     <>
-      <div className="notice-bar">
-        <Sparkles size={14} /> Link Demo to Real Conversion is active: 100 Demo = ₹10 Real Wallet{' '}
-        <Link to="/wallet#conversion-desk">Convert now</Link>
-      </div>
+      {accessRequired || backendContract === 'v2' ? (
+        <div className={`notice-bar ${accessRequired ? 'notice-private' : 'notice-v2'}`}>
+          <Lock size={14} />
+          {accessRequired
+            ? 'Live mudrexxback is in private mode. Open a V2 source/access link or paste a code to continue.'
+            : `Connected to V2 mudrexx-control (${accessType}). Earn wallet calls stay gated until the V2 contract exposes them.`}
+          {accessRequired && (
+            <button type="button" onClick={() => openAuth('signin')}>
+              Enter access
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="notice-bar">
+          <Sparkles size={14} /> Link Demo to Real Conversion is active: 100 Demo = ₹10 Real Wallet{' '}
+          <Link to="/wallet#conversion-desk">Convert now</Link>
+        </div>
+      )}
       <header className="site-header">
         <div className="container header-inner">
           <Logo />
@@ -303,9 +317,10 @@ export function PageHero({
 }
 
 export function AuthModal() {
-  const { authMode, closeAuth, authenticate, notify } = useApp();
+  const { authMode, closeAuth, authenticate, notify, accessRequired, backendContract, redeemAccess, syncing } = useApp();
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [loading, setLoading] = useState(false);
+  const [accessInput, setAccessInput] = useState('');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -369,15 +384,63 @@ export function AuthModal() {
         </button>
         <Logo />
         <div className="auth-heading">
-          <span>{mode === 'signup' ? 'New Account Registration' : 'Member Sign In'}</span>
-          <h2>{mode === 'signin' ? 'Welcome back' : 'Create your account'}</h2>
+          <span>
+            {accessRequired || backendContract === 'v2'
+              ? 'Private desk'
+              : mode === 'signup'
+                ? 'New Account Registration'
+                : 'Member Sign In'}
+          </span>
+          <h2>
+            {accessRequired
+              ? 'Access required'
+              : mode === 'signin'
+                ? 'Welcome back'
+                : 'Create your account'}
+          </h2>
           <p>
-            {mode === 'signin'
-              ? 'Sign in to access your wallet, inspect frozen balances, and trade.'
-              : 'Register now. New accounts start with ₹0.00 balance and 10,000 practice demo credits.'}
+            {accessRequired
+              ? 'The live backend is V2 mudrexx-control in private mode. Use a source/access link (/a/… or /s/…) or paste the code below. Old Earn register/login calls return ACCESS_REQUIRED.'
+              : mode === 'signin'
+                ? 'Sign in to access your wallet, inspect frozen balances, and trade.'
+                : 'Register now. New accounts start with ₹0.00 balance and 10,000 practice demo credits.'}
           </p>
         </div>
 
+        {(accessRequired || backendContract === 'v2') && (
+          <form
+            className="auth-form access-form"
+            onSubmit={async (event) => {
+              event.preventDefault();
+              setLoading(true);
+              try {
+                const ok = await redeemAccess(accessInput);
+                if (ok) {
+                  closeAuth();
+                  navigate('/');
+                }
+              } finally {
+                setLoading(false);
+              }
+            }}
+          >
+            <label>
+              V2 source / access link
+              <input
+                value={accessInput}
+                onChange={(event) => setAccessInput(event.target.value)}
+                placeholder="/a/your-access-code or full URL"
+                autoComplete="off"
+                required
+              />
+            </label>
+            <button className="btn btn-purple btn-full" disabled={loading || syncing}>
+              {loading || syncing ? 'Redeeming access…' : 'Redeem access'} <ArrowRight size={16} />
+            </button>
+          </form>
+        )}
+
+        {!accessRequired && (
         <div className="auth-tabs">
           <button className={mode === 'signin' ? 'active' : ''} onClick={() => setMode('signin')}>
             Sign in
@@ -386,7 +449,9 @@ export function AuthModal() {
             Sign up (₹0 Balance)
           </button>
         </div>
+        )}
 
+        {!accessRequired && (
         <form onSubmit={submit} className="auth-form">
           {mode === 'signup' && (
             <label>
@@ -436,17 +501,20 @@ export function AuthModal() {
             <ArrowRight size={16} />
           </button>
         </form>
+        )}
 
+        {!accessRequired && (
         <div className="quick-demo-access-wrap">
           <span className="divider-text">OR FAST ACCESS</span>
           <button type="button" className="btn btn-soft btn-full" onClick={quickDemoLogin} disabled={loading}>
             <Sparkles size={15} /> One-Click Quick Demo Registration <ArrowRight size={14} />
           </button>
         </div>
+        )}
 
         <div className="secure-note">
           <ShieldCheck size={17} />
-          <span>Persistent session · You will not be asked again once logged in</span>
+          <span>{accessRequired ? 'V2 private mode · source/access links grant the session cookie' : 'Persistent session · You will not be asked again once logged in'}</span>
         </div>
       </div>
     </div>

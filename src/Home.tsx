@@ -10,7 +10,7 @@ import { useApp } from './app-context';
 
 export default function Home() {
   const { quotes, source } = useMarket();
-  const { user, openAuth } = useApp();
+  const { user, openAuth, accessRequired } = useApp();
   const top = quotes.slice(0, 4);
 
   const realBalance = user ? user.wallet.realBalance : 0;
@@ -311,8 +311,8 @@ export default function Home() {
                 View Your Wallet <ChevronRight size={17} />
               </Link>
             ) : (
-              <button className="btn btn-white btn-lg" onClick={() => openAuth('signup')}>
-                Open free account (₹0 balance) <ChevronRight size={17} />
+              <button className="btn btn-white btn-lg" onClick={() => openAuth(accessRequired ? 'signin' : 'signup')}>
+                {accessRequired ? 'Enter access link' : 'Open free account (₹0 balance)'} <ChevronRight size={17} />
               </button>
             )}
           </div>
@@ -384,8 +384,8 @@ export default function Home() {
               Go to Wallet Desk <ArrowRight size={17} />
             </Link>
           ) : (
-            <button className="btn btn-white btn-lg" onClick={() => openAuth('signup')}>
-              Create your account (₹0 balance) <ArrowRight size={17} />
+            <button className="btn btn-white btn-lg" onClick={() => openAuth(accessRequired ? 'signin' : 'signup')}>
+              {accessRequired ? 'Enter access link' : 'Create your account (₹0 balance)'} <ArrowRight size={17} />
             </button>
           )}
         </div>

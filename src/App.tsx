@@ -1,18 +1,7 @@
 import { useEffect } from 'react';
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
-import { AppProvider } from './app-context';
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { AppProvider, useApp } from './app-context';
 import { MarketProvider } from './market-context';
-
-function SpaceBackdrop() {
-  return (
-    <div className="space-backdrop" aria-hidden="true">
-      <span className="stars stars-a" />
-      <span className="stars stars-b" />
-      <span className="nebula nebula-a" />
-      <span className="nebula nebula-b" />
-    </div>
-  );
-}
 import {
   AuthModal,
   ContactButton,
@@ -28,12 +17,50 @@ import InstantOrder from './InstantOrder';
 import Deposit from './Deposit';
 import { CommunityPage, ProfilePage, SupportPage, WalletPage } from './AccountPages';
 
+function SpaceBackdrop() {
+  return (
+    <div className="space-backdrop" aria-hidden="true">
+      <span className="stars stars-a" />
+      <span className="stars stars-b" />
+      <span className="nebula nebula-a" />
+      <span className="nebula nebula-b" />
+    </div>
+  );
+}
+
 function ScrollToTop() {
   const location = useLocation();
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' });
   }, [location.pathname]);
   return null;
+}
+
+function AccessLinkPage({ kind }: { kind: 'access' | 'source' }) {
+  const { code = '' } = useParams();
+  const { redeemAccess, syncing } = useApp();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      if (!code) {
+        navigate('/', { replace: true });
+        return;
+      }
+      await redeemAccess(`${kind === 'source' ? '/s/' : '/a/'}${code}`);
+      if (active) navigate('/', { replace: true });
+    })();
+    return () => {
+      active = false;
+    };
+  }, [code, kind, navigate, redeemAccess]);
+
+  return (
+    <main className="access-link-page">
+      <p>{syncing ? 'Redeeming access…' : 'Opening private desk…'}</p>
+    </main>
+  );
 }
 
 function AppRoutes() {
@@ -51,6 +78,8 @@ function AppRoutes() {
         <Route path="/wallet" element={<WalletPage />} />
         <Route path="/support" element={<SupportPage />} />
         <Route path="/community" element={<CommunityPage />} />
+        <Route path="/a/:code" element={<AccessLinkPage kind="access" />} />
+        <Route path="/s/:code" element={<AccessLinkPage kind="source" />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <SiteFooter />
