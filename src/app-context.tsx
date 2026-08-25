@@ -1,14 +1,21 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
+  ACCESS_REQUIRED,
   ApiError,
+  type AuthSnapshot,
+  type BackendContract,
   adjustDemoBalance,
   apiMessage,
   approveDepositItem,
   claimDemoCreditsApi,
   convertDemoCredits,
   createOrder,
-  getCurrentUser,
+  isAccessRequired,
   loginUser,
+  parseAccessInput,
+  probeAuth,
+  readAccessFromLocation,
+  redeemAccessLink,
   registerUser,
   releaseFrozenItem,
   setDemoLinkStatus,
@@ -70,6 +77,12 @@ type AppState = {
   user: User | null;
   /** True while a backend request is changing auth state (login/register). */
   syncing: boolean;
+  /** Detected backend contract. `v2` is the live private-mode mudrexx-control API. */
+  backendContract: BackendContract;
+  /** True when live mudrexxback is in private mode and this browser has no access grant. */
+  accessRequired: boolean;
+  accessType: string;
+  redeemAccess: (input: string) => Promise<boolean>;
   authMode: AuthMode | null;
   openAuth: (mode: AuthMode) => void;
   closeAuth: () => void;
@@ -79,7 +92,6 @@ type AppState = {
   notices: Notice[];
   notify: (title: string, message: string, tone?: Notice['tone']) => void;
   dismiss: (id: number) => void;
-  // Wallet operations (all backend-driven):
   convertDemoToReal: (demoCredits: number) => Promise<{ success: boolean; realGain: number; message: string }>;
   addDeposit: (amount: number, rail: 'inr' | 'usdt', method: string, reference?: string) => Promise<boolean>;
   approveDeposit: (id: string) => Promise<void>;
@@ -95,7 +107,6 @@ type AppState = {
   claimDemoCredits: (amount?: number) => Promise<void>;
   setDemoLinked: (linked: boolean) => Promise<void>;
   updateDemoBalance: (delta: number) => Promise<void>;
-  // Conversion modal:
   isConversionOpen: boolean;
   openConversionModal: () => void;
   closeConversionModal: () => void;
@@ -127,17 +138,23 @@ function readCachedUser(): User | null {
   }
 }
 
+function clearLinkPath() {
+  if (!window.history.replaceState) return;
+  const onLinkPath = /^\/[as]\/[^/]+/.test(window.location.pathname);
+  window.history.replaceState({}, '', onLinkPath ? '/' : window.location.pathname);
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
-  // Start from the cached copy so persistent sessions render instantly,
-  // then re-sync from the backend which is the source of truth.
   const [user, setUser] = useState<User | null>(readCachedUser);
   const [session, setSession] = useState<Session | null>(readSession);
   const [authMode, setAuthMode] = useState<AuthMode | null>(null);
   const [notices, setNotices] = useState<Notice[]>([]);
   const [isConversionOpen, setIsConversionOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [backendContract, setBackendContract] = useState<BackendContract>('unknown');
+  const [accessRequired, setAccessRequired] = useState(false);
+  const [accessType, setAccessType] = useState('unknown');
 
-  // Cache the latest backend state for instant session restore next visit.
   useEffect(() => {
     if (user) {
       try {
@@ -150,7 +167,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [user]);
 
-  // Persist the backend session token.
   useEffect(() => {
     if (session) {
       try {
@@ -173,35 +189,121 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setNotices((current) => current.filter((item) => item.id !== id));
   }, []);
 
-  /** Re-fetch the account from the backend and apply it as the new state. */
-  const refreshFromServer = useCallback(async (email: string) => {
-    const res = await getCurrentUser(email);
-    if (!res?.success || !res.user) {
-      throw new ApiError(res?.error || 'Backend rejected the account refresh.', 502);
+  const applySnapshot = useCallback((snap: AuthSnapshot) => {
+    setBackendContract(snap.contract);
+    setAccessType(snap.type);
+    setAccessRequired(snap.accessRequired);
+
+    if (snap.user) {
+      const fresh = sanitizeUser(snap.user) ?? snap.user;
+      setUser(fresh);
+      if (snap.token) setSession({ email: fresh.email, token: snap.token });
+      return fresh;
     }
-    const fresh = sanitizeUser(res.user);
-    if (!fresh) throw new ApiError('Backend returned an invalid account payload.', 502);
-    setUser(fresh);
-    return fresh;
+
+    if (snap.contract === 'v2' && snap.accessRequired) {
+      setUser(null);
+      setSession(null);
+    }
+    return null;
   }, []);
 
-  // On mount (or after sign-in), re-sync the stored session with the backend.
+  const refreshFromServer = useCallback(
+    async (email?: string) => {
+      const snap = await probeAuth(email);
+      const fresh = applySnapshot(snap);
+      if (snap.contract === 'v2') return fresh;
+      if (!fresh) {
+        throw new ApiError(
+          snap.accessRequired ? ACCESS_REQUIRED : 'Backend rejected the account refresh.',
+          snap.accessRequired ? 403 : 502,
+          snap.accessRequired ? ACCESS_REQUIRED : undefined
+        );
+      }
+      return fresh;
+    },
+    [applySnapshot]
+  );
+
+  const redeemAccess = useCallback(
+    async (input: string) => {
+      const parsed = parseAccessInput(input);
+      if (!parsed) {
+        notify('Access code required', 'Paste a V2 source/access link or code.', 'warning');
+        return false;
+      }
+      setSyncing(true);
+      try {
+        const snap = await redeemAccessLink(parsed.kind, parsed.code);
+        applySnapshot(snap);
+        if (snap.accessRequired && !snap.user) {
+          notify(
+            'Access still required',
+            'That link did not grant a session. Confirm it is a live V2 source or access URL.',
+            'warning'
+          );
+          return false;
+        }
+        notify(
+          snap.user ? 'Access granted' : 'Private desk unlocked',
+          snap.user
+            ? `Signed in as ${snap.user.name}.`
+            : 'The live backend accepted this source/access link. Wallet calls still follow the V2 contract.',
+          'success'
+        );
+        return true;
+      } catch (error) {
+        notify('Access failed', apiMessage(error), 'warning');
+        return false;
+      } finally {
+        setSyncing(false);
+      }
+    },
+    [applySnapshot, notify]
+  );
+
   useEffect(() => {
-    if (!session) return;
     let active = true;
     (async () => {
+      const pending = readAccessFromLocation();
       try {
-        await refreshFromServer(session.email);
-      } catch (error) {
-        if (active) {
-          notify('Backend unavailable', `${apiMessage(error)} Showing the last synced data.`, 'warning');
+        if (pending) {
+          const snap = await redeemAccessLink(pending.kind, pending.code);
+          if (!active) return;
+          applySnapshot(snap);
+          clearLinkPath();
+          if (!snap.accessRequired) return;
         }
+        const snap = await probeAuth(session?.email);
+        if (!active) return;
+        // Local Earn `/api/auth/me` without an email fabricates demo@mudrexx.com.
+        // Don't treat that as a real login when this browser has no session.
+        if (!session && snap.contract === 'earn' && !pending) {
+          setBackendContract('earn');
+          setAccessRequired(false);
+          setAccessType('earn');
+          return;
+        }
+        applySnapshot(snap);
+      } catch (error) {
+        if (!active) return;
+        if (isAccessRequired(error)) {
+          setBackendContract('v2');
+          setAccessRequired(true);
+          setAccessType('anonymous');
+          setUser(null);
+          setSession(null);
+          return;
+        }
+        notify('Backend unavailable', `${apiMessage(error)} Showing the last synced data.`, 'warning');
       }
     })();
     return () => {
       active = false;
     };
-  }, [session, refreshFromServer, notify]);
+    // Probe once on mount. Later refreshes go through authenticate / wallet mutations.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const authenticate = useCallback(
     async (userProfile: AuthProfile, isNewUser = false) => {
@@ -211,12 +313,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
           ? await registerUser(userProfile)
           : await loginUser(userProfile.email, userProfile.name);
         if (!res?.success || !res.user) {
-          throw new ApiError(res?.error || 'Authentication failed on the backend.', 401);
+          throw new ApiError(
+            res?.error || 'Authentication failed on the backend.',
+            res?.error === ACCESS_REQUIRED ? 403 : 401,
+            res?.error === ACCESS_REQUIRED ? ACCESS_REQUIRED : undefined
+          );
         }
         const nextUser = sanitizeUser(res.user);
         if (!nextUser) throw new ApiError('Backend returned an invalid account payload.', 502);
         setUser(nextUser);
         setSession({ email: nextUser.email, token: res.token || `mudrexx_${nextUser.email}` });
+        setBackendContract('earn');
+        setAccessRequired(false);
+        setAccessType('earn');
         setAuthMode(null);
       } catch (error) {
         notify('Authentication failed', apiMessage(error), 'warning');
@@ -233,7 +342,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSession(null);
   }, []);
 
-  // Demo to Real Conversion — backend validates and credits the real wallet.
   const convertDemoToReal = useCallback(
     async (demoCredits: number) => {
       if (!user) {
@@ -263,7 +371,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [user, refreshFromServer, notify]
   );
 
-  // Add Deposit (backend records it in the Frozen Amount section).
   const addDeposit = useCallback(
     async (amount: number, rail: 'inr' | 'usdt', method: string, reference = '') => {
       if (!user) return false;
@@ -281,7 +388,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [user, refreshFromServer, notify]
   );
 
-  // Approve pending deposit (backend moves it from frozen to available).
   const approveDeposit = useCallback(
     async (id: string) => {
       if (!user) return;
@@ -297,7 +403,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [user, refreshFromServer, notify]
   );
 
-  // Cancel or Release any Frozen Item back to Available Balance.
   const cancelOrReleaseFrozen = useCallback(
     async (id: string) => {
       if (!user) return;
@@ -313,7 +418,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [user, refreshFromServer, notify]
   );
 
-  // Place a real order (backend escrows the funds in Frozen Amount).
   const addFrozenOrder = useCallback(
     async (order: {
       title: string;
@@ -348,7 +452,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [user, refreshFromServer, notify]
   );
 
-  // Stake in a flexible vault (backend locks the amount in Frozen Balance).
   const addStakingVault = useCallback(
     async (asset: string, amount: number, apy: number) => {
       if (!user) return false;
@@ -366,7 +469,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [user, refreshFromServer, notify]
   );
 
-  // Claim Practice Demo Credits (backend grant).
   const claimDemoCredits = useCallback(
     async (amount = 5000) => {
       if (!user) return;
@@ -403,7 +505,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [user, refreshFromServer, notify]
   );
 
-  // Update demo balance (Flight Lab wagers/cash-outs) — backend-controlled.
   const updateDemoBalance = useCallback(
     async (delta: number) => {
       if (!user) return;
@@ -430,6 +531,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     () => ({
       user,
       syncing,
+      backendContract,
+      accessRequired,
+      accessType,
+      redeemAccess,
       authMode,
       openAuth: setAuthMode,
       closeAuth: () => setAuthMode(null),
@@ -454,6 +559,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [
       user,
       syncing,
+      backendContract,
+      accessRequired,
+      accessType,
+      redeemAccess,
       authMode,
       authenticate,
       signOut,

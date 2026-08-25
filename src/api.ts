@@ -1,69 +1,144 @@
 /**
  * Mudrexx Earn Backend API Client
- * Every frontend control resolves through these functions so the backend
- * remains the single source of truth for all trading, wallet and account state.
+ *
+ * Speaks two contracts:
+ *   - Earn (local `server.mjs`): `{ success, user, error }`
+ *   - V2 mudrexx-control (live `mudrexxback`, private mode):
+ *       GET /api/auth/me → `{ ok: true, type: "anonymous" | "access" | ... }`
+ *       protected calls  → `ACCESS_REQUIRED`
+ *
+ * Requests always send cookies (`credentials: include`) so V2 source/access
+ * links can grant a session. Bearer tokens from localStorage are attached
+ * when present.
  */
 
-import type { AuthProfile, FrozenFundItem, User, WalletTransaction } from './types';
+import type { AuthProfile, FrozenFundItem, User, UserWallet, WalletTransaction } from './types';
 import type { MarketQuote } from './data';
 
-/**
- * Base URL for the backend API. Defaults to same-origin (Express serves the
- * built frontend, and Vite proxies /api to :8080 in dev). Point it at a
- * deployed backend with VITE_API_URL when hosting the frontend separately.
- */
 export const API_BASE: string = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
+
+export const ACCESS_REQUIRED = 'ACCESS_REQUIRED';
+export const SESSION_TOKEN_KEY = 'mudrexx-session';
+
+export type BackendContract = 'earn' | 'v2' | 'unknown';
+export type V2AuthType = 'anonymous' | 'access' | 'source' | 'staff' | 'user' | 'session' | string;
 
 export class ApiError extends Error {
   status: number;
-  constructor(message: string, status = 0) {
+  code?: string;
+  constructor(message: string, status = 0, code?: string) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
+    this.code = code;
   }
 }
 
+export function isAccessRequired(error: unknown): boolean {
+  return error instanceof ApiError && error.code === ACCESS_REQUIRED;
+}
+
 export function apiMessage(error: unknown): string {
-  if (error instanceof ApiError) return error.message;
+  if (error instanceof ApiError) {
+    if (error.code === ACCESS_REQUIRED) {
+      return 'This live desk is in private mode. Open a V2 source or access link, or paste an access code.';
+    }
+    return error.message;
+  }
   if (error instanceof Error) return error.message;
   return 'Unexpected error';
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+function readStoredToken(): string | null {
+  try {
+    const stored = localStorage.getItem(SESSION_TOKEN_KEY);
+    if (!stored) return null;
+    const parsed = JSON.parse(stored) as { token?: string };
+    return typeof parsed.token === 'string' && parsed.token ? parsed.token : null;
+  } catch {
+    return null;
+  }
+}
+
+function extractErrorCode(body: unknown, fallbackStatus = 0): { message: string; code?: string } {
+  if (!body || typeof body !== 'object') {
+    return { message: fallbackStatus ? `Backend request failed (${fallbackStatus}).` : 'Backend request failed.' };
+  }
+  const record = body as Record<string, unknown>;
+  const raw =
+    (typeof record.error === 'string' && record.error) ||
+    (typeof record.code === 'string' && record.code) ||
+    (typeof record.message === 'string' && record.message) ||
+    '';
+  const upper = raw.toUpperCase();
+  if (upper === ACCESS_REQUIRED || upper.includes(ACCESS_REQUIRED)) {
+    return { message: raw || ACCESS_REQUIRED, code: ACCESS_REQUIRED };
+  }
+  return { message: raw };
+}
+
+type RequestOptions = {
+  allowAccessRequired?: boolean;
+};
+
+async function request<T>(path: string, init?: RequestInit, options?: RequestOptions): Promise<T> {
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+    ...(init?.headers as Record<string, string> | undefined),
+  };
+  const hasBody = init?.body !== undefined && init?.body !== null;
+  if (hasBody && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
+
+  const token = readStoredToken();
+  if (token && !headers.Authorization) headers.Authorization = `Bearer ${token}`;
+
   let response: Response;
   try {
     response = await fetch(`${API_BASE}${path}`, {
       ...init,
-      headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
+      credentials: 'include',
+      headers,
     });
   } catch {
     throw new ApiError('Backend is unreachable. Check your connection and try again.');
   }
 
   let body: unknown = null;
-  try {
-    body = await response.json();
-  } catch {
-    /* non-JSON response */
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    try {
+      body = await response.json();
+    } catch {
+      body = null;
+    }
+  } else {
+    try {
+      const text = await response.text();
+      body = text ? JSON.parse(text) : null;
+    } catch {
+      body = null;
+    }
   }
 
-  const errorText =
-    body && typeof body === 'object' && typeof (body as { error?: unknown }).error === 'string'
-      ? (body as { error: string }).error
-      : '';
+  const extracted = extractErrorCode(body, response.status);
+  const accessDenied = extracted.code === ACCESS_REQUIRED;
 
-  if (!response.ok) {
-    throw new ApiError(errorText || `Backend request failed (${response.status}).`, response.status);
+  if (accessDenied && options?.allowAccessRequired) {
+    return (body ?? { ok: false, error: ACCESS_REQUIRED }) as T;
+  }
+
+  if (!response.ok || accessDenied) {
+    throw new ApiError(
+      extracted.message || `Backend request failed (${response.status}).`,
+      response.status,
+      extracted.code
+    );
   }
   return body as T;
 }
 
 const post = <T>(path: string, payload: unknown) =>
   request<T>(path, { method: 'POST', body: JSON.stringify(payload) });
-
-// ---------------------------------------------------------------------------
-// Response payload types (mirror server.mjs responses)
-// ---------------------------------------------------------------------------
 
 export type HealthResponse = {
   ok: boolean;
@@ -254,10 +329,6 @@ export type AdminInvitedUsersResponse = {
   error?: string;
 };
 
-// ---------------------------------------------------------------------------
-// 1. Health & Markets
-// ---------------------------------------------------------------------------
-
 export async function getHealth(): Promise<HealthResponse> {
   return request<HealthResponse>('/api/health');
 }
@@ -270,9 +341,260 @@ export async function getKlines(symbol = 'BTC', interval = '1m'): Promise<Klines
   return request<KlinesResponse>(`/api/market/klines?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}`);
 }
 
-// ---------------------------------------------------------------------------
-// 2. Authentication & Profile
-// ---------------------------------------------------------------------------
+export type AuthSnapshot = {
+  contract: BackendContract;
+  type: V2AuthType | 'earn';
+  accessRequired: boolean;
+  user: User | null;
+  token?: string;
+  raw: unknown;
+};
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' ? (value as Record<string, unknown>) : null;
+}
+
+function pickString(...values: unknown[]): string {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+
+function pickNumber(value: unknown, fallback = 0): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function emptyWallet(): UserWallet {
+  return {
+    realBalance: 0,
+    realUsdtBalance: 0,
+    frozenBalance: 0,
+    frozenUsdtBalance: 0,
+    demoBalance: 0,
+    demoLinked: false,
+    conversionRate: 0.1,
+    totalConverted: 0,
+    assetHoldings: { BTC: 0, ETH: 0, BNB: 0, SOL: 0, XRP: 0, ETC: 0, ADA: 0, DOGE: 0 },
+    frozenItems: [],
+    transactions: [],
+  };
+}
+
+export function mapBackendUser(data: unknown): User | null {
+  const root = asRecord(data);
+  if (!root) return null;
+
+  const nested =
+    asRecord(root.user) ||
+    asRecord(root.profile) ||
+    asRecord(root.account) ||
+    asRecord(root.staff) ||
+    root;
+
+  const email = pickString(nested.email, nested.username).toLowerCase();
+  const name = pickString(nested.name, nested.full_name, nested.fullName, nested.username, email.split('@')[0]);
+  if (!email || !name) return null;
+
+  const rawWallet = asRecord(nested.wallet) || asRecord(root.wallet) || {};
+  const holdings = asRecord(rawWallet.assetHoldings) || {};
+  const wallet: UserWallet = {
+    ...emptyWallet(),
+    realBalance: pickNumber(rawWallet.realBalance, pickNumber(nested.balance)),
+    realUsdtBalance: pickNumber(rawWallet.realUsdtBalance),
+    frozenBalance: pickNumber(rawWallet.frozenBalance),
+    frozenUsdtBalance: pickNumber(rawWallet.frozenUsdtBalance),
+    demoBalance: pickNumber(rawWallet.demoBalance, 0),
+    demoLinked: rawWallet.demoLinked !== undefined ? Boolean(rawWallet.demoLinked) : false,
+    conversionRate: pickNumber(rawWallet.conversionRate, 0.1),
+    totalConverted: pickNumber(rawWallet.totalConverted),
+    assetHoldings: {
+      BTC: 0,
+      ETH: 0,
+      BNB: 0,
+      SOL: 0,
+      XRP: 0,
+      ETC: 0,
+      ADA: 0,
+      DOGE: 0,
+      ...Object.fromEntries(
+        Object.entries(holdings).filter((entry): entry is [string, number] => typeof entry[1] === 'number')
+      ),
+    },
+    frozenItems: Array.isArray(rawWallet.frozenItems) ? (rawWallet.frozenItems as UserWallet['frozenItems']) : [],
+    transactions: Array.isArray(rawWallet.transactions) ? (rawWallet.transactions as UserWallet['transactions']) : [],
+  };
+
+  return {
+    name,
+    email,
+    phone: pickString(nested.phone),
+    preferredCurrency: nested.preferredCurrency === 'USDT' ? 'USDT' : 'INR',
+    registeredAt: pickString(nested.registeredAt, nested.created_at, nested.createdAt) || new Date().toISOString(),
+    inviteCode: pickString(nested.inviteCode),
+    invitedBy: pickString(nested.invitedBy),
+    invitedByType: nested.invitedByType === 'admin' || nested.invitedByType === 'user' ? nested.invitedByType : '',
+    wallet,
+  };
+}
+
+export function interpretAuthBody(body: unknown): AuthSnapshot {
+  const record = asRecord(body) ?? {};
+  const extracted = extractErrorCode(body);
+  const token = pickString(record.token, asRecord(record.data)?.token);
+
+  if (extracted.code === ACCESS_REQUIRED) {
+    return { contract: 'v2', type: 'anonymous', accessRequired: true, user: null, token: token || undefined, raw: body };
+  }
+
+  if (record.success === true && (record.user || asRecord(record.data)?.user)) {
+    return {
+      contract: 'earn',
+      type: 'earn',
+      accessRequired: false,
+      user: mapBackendUser(record.user ?? asRecord(record.data)?.user),
+      token: token || undefined,
+      raw: body,
+    };
+  }
+
+  if (record.ok === true || typeof record.type === 'string') {
+    const type = pickString(record.type) || 'anonymous';
+    const gated = type === 'anonymous';
+    return {
+      contract: 'v2',
+      type,
+      accessRequired: gated,
+      user: mapBackendUser(body),
+      token: token || undefined,
+      raw: body,
+    };
+  }
+
+  const mapped = mapBackendUser(body);
+  if (mapped) {
+    return { contract: 'unknown', type: 'user', accessRequired: false, user: mapped, token: token || undefined, raw: body };
+  }
+
+  return { contract: 'unknown', type: 'anonymous', accessRequired: false, user: null, token: token || undefined, raw: body };
+}
+
+export async function probeAuth(email?: string): Promise<AuthSnapshot> {
+  const path = email ? `/api/auth/me?email=${encodeURIComponent(email)}` : '/api/auth/me';
+  try {
+    const body = await request<unknown>(path, undefined, { allowAccessRequired: true });
+    return interpretAuthBody(body);
+  } catch (error) {
+    if (isAccessRequired(error)) {
+      return { contract: 'v2', type: 'anonymous', accessRequired: true, user: null, raw: { error: ACCESS_REQUIRED } };
+    }
+    throw error;
+  }
+}
+
+export type AccessKind = 'access' | 'source';
+
+export type ParsedAccessInput = {
+  kind: AccessKind;
+  code: string;
+};
+
+export function parseAccessInput(raw: string): ParsedAccessInput | null {
+  const value = raw.trim();
+  if (!value) return null;
+
+  const tryUrl = (input: string): ParsedAccessInput | null => {
+    try {
+      const url = new URL(input, 'https://mudrexx.local');
+      const access = url.searchParams.get('access') || url.searchParams.get('a') || url.searchParams.get('token');
+      const source = url.searchParams.get('src') || url.searchParams.get('source') || url.searchParams.get('s');
+      const segments = url.pathname.split('/').filter(Boolean);
+      const marker = segments.findIndex((part) => part === 'a' || part === 's');
+      if (marker >= 0 && segments[marker + 1]) {
+        return { kind: segments[marker] === 's' ? 'source' : 'access', code: decodeURIComponent(segments[marker + 1]) };
+      }
+      if (source) return { kind: 'source', code: source };
+      if (access) return { kind: 'access', code: access };
+    } catch {
+      return null;
+    }
+    return null;
+  };
+
+  if (value.includes('://') || value.startsWith('/') || value.includes('?')) {
+    const parsed = tryUrl(value);
+    if (parsed) return parsed;
+  }
+
+  return { kind: 'access', code: value };
+}
+
+export function readAccessFromLocation(location: { pathname: string; search: string } = window.location): ParsedAccessInput | null {
+  return parseAccessInput(`${location.pathname}${location.search}`);
+}
+
+async function followLink(path: string): Promise<unknown> {
+  try {
+    const token = readStoredToken();
+    const response = await fetch(`${API_BASE}${path}`, {
+      method: 'GET',
+      credentials: 'include',
+      redirect: 'follow',
+      headers: {
+        Accept: 'application/json, text/html;q=0.8',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
+    const contentType = response.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      try {
+        return await response.json();
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export async function redeemAccessLink(kind: AccessKind, code: string): Promise<AuthSnapshot> {
+  const trimmed = code.trim();
+  if (!trimmed) {
+    throw new ApiError('Access code is required.', 400);
+  }
+
+  const linkPath = kind === 'source' ? `/s/${encodeURIComponent(trimmed)}` : `/a/${encodeURIComponent(trimmed)}`;
+  const linkBody = await followLink(linkPath);
+  if (linkBody) {
+    const fromLink = interpretAuthBody(linkBody);
+    if (!fromLink.accessRequired || fromLink.user) return fromLink;
+  }
+
+  const payloads = [
+    { path: '/api/auth/access', body: { code: trimmed, kind } },
+    { path: '/api/access/redeem', body: { code: trimmed, token: trimmed, kind } },
+    { path: '/api/auth/source', body: { code: trimmed, source: trimmed } },
+  ];
+
+  for (const attempt of payloads) {
+    try {
+      const body = await request<unknown>(
+        attempt.path,
+        { method: 'POST', body: JSON.stringify(attempt.body) },
+        { allowAccessRequired: true }
+      );
+      const snap = interpretAuthBody(body);
+      if (!snap.accessRequired || snap.user) return snap;
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) continue;
+      if (isAccessRequired(error)) continue;
+    }
+  }
+
+  return probeAuth();
+}
 
 export async function registerUser(profile: AuthProfile): Promise<AuthResponse> {
   return post<AuthResponse>('/api/auth/register', profile);
@@ -282,11 +604,15 @@ export async function loginUser(email: string, name?: string): Promise<AuthRespo
   return post<AuthResponse>('/api/auth/login', { email, name });
 }
 
-export async function getCurrentUser(email: string): Promise<MeResponse> {
-  return request<MeResponse>(`/api/auth/me?email=${encodeURIComponent(email)}`);
+export async function getCurrentUser(email?: string): Promise<MeResponse> {
+  const snap = await probeAuth(email);
+  if (snap.contract === 'v2' && snap.accessRequired) {
+    return { success: false, error: ACCESS_REQUIRED };
+  }
+  if (snap.user) return { success: true, user: snap.user };
+  return { success: false, error: snap.accessRequired ? ACCESS_REQUIRED : 'No authenticated account on this backend.' };
 }
 
-/** List every account that registered with the given admin invitation code. */
 export async function getAdminInvitedUsers(code: string): Promise<AdminInvitedUsersResponse> {
   return request<AdminInvitedUsersResponse>(`/api/admin/invited-users?code=${encodeURIComponent(code)}`);
 }
@@ -303,10 +629,6 @@ export async function updateProfile(data: {
   });
 }
 
-// ---------------------------------------------------------------------------
-// 3. Wallet & Balance
-// ---------------------------------------------------------------------------
-
 export async function getWalletSummary(email: string): Promise<WalletSummaryResponse> {
   return request<WalletSummaryResponse>(`/api/wallet/summary?email=${encodeURIComponent(email)}`);
 }
@@ -314,10 +636,6 @@ export async function getWalletSummary(email: string): Promise<WalletSummaryResp
 export async function getTransactions(email: string): Promise<TransactionsResponse> {
   return request<TransactionsResponse>(`/api/wallet/transactions?email=${encodeURIComponent(email)}`);
 }
-
-// ---------------------------------------------------------------------------
-// 4. Frozen Amount & Escrow
-// ---------------------------------------------------------------------------
 
 export async function getFrozenItems(email: string): Promise<FrozenResponse> {
   return request<FrozenResponse>(`/api/wallet/frozen?email=${encodeURIComponent(email)}`);
@@ -331,10 +649,6 @@ export async function approveDepositItem(email: string, id: string): Promise<App
   return post<ApproveDepositResponse>('/api/wallet/deposit/approve', { email, id });
 }
 
-// ---------------------------------------------------------------------------
-// 5. Demo to Real Conversion
-// ---------------------------------------------------------------------------
-
 export async function convertDemoCredits(email: string, demoCredits: number): Promise<ConvertDemoResponse> {
   return post<ConvertDemoResponse>('/api/wallet/convert-demo', { email, demoCredits });
 }
@@ -347,14 +661,9 @@ export async function setDemoLinkStatus(email: string, linked: boolean): Promise
   return post<LinkDemoResponse>('/api/wallet/link-demo', { email, linked });
 }
 
-/** Backend-controlled demo balance changes (Flight Lab wagers & cash-outs). */
 export async function adjustDemoBalance(email: string, delta: number): Promise<AdjustDemoResponse> {
   return post<AdjustDemoResponse>('/api/wallet/demo/adjust', { email, delta });
 }
-
-// ---------------------------------------------------------------------------
-// 6. Deposits & Withdrawals
-// ---------------------------------------------------------------------------
 
 export async function submitDeposit(data: {
   email: string;
@@ -373,10 +682,6 @@ export async function submitWithdrawal(data: {
 }): Promise<WithdrawResponse> {
   return post<WithdrawResponse>('/api/withdraw/submit', data);
 }
-
-// ---------------------------------------------------------------------------
-// 7. Orders & Staking
-// ---------------------------------------------------------------------------
 
 export async function createOrder(data: {
   email: string;

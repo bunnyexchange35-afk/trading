@@ -28,7 +28,25 @@ The React frontend (`src/`) is fully driven by the Mudrexx Express backend (`ser
 - **Markets**: live quotes and klines are served by the backend from Binance public feeds with built-in fallback.
 - **Persistence**: user state is stored on disk at `server/data/users.json` (gitignored), so accounts survive backend restarts and redeploys.
 
-In development, Vite proxies `/api` to the Express server (`:8080`); in production, Express serves the built frontend from `dist/` on the same origin, so the frontend always talks to the backend relatively.
+In development, Vite proxies `/api` (and V2 `/a`, `/s` access links) to the Express server (`:8080`); in production the Cloudflare Worker serves the built frontend and proxies those paths to `BACKEND_ORIGIN`.
+
+### Live `mudrexxback` (V2 private mode)
+
+The deployed worker can point at live **mudrexxback**, which speaks the V2 `mudrexx-control` contract — not the local Earn API in `server.mjs`.
+
+| Call | V2 private-mode result |
+| --- | --- |
+| `GET /api/auth/me` | `{ "ok": true, "type": "anonymous" }` until a source/access grant exists |
+| Protected Earn routes (`/api/auth/register`, `/api/wallet/*`, …) | `ACCESS_REQUIRED` |
+
+The frontend now:
+
+1. Sends cookies (`credentials: include`) plus any stored bearer token.
+2. Detects Earn vs V2 from `/api/auth/me` instead of treating `{ ok: true, type: "anonymous" }` as a broken Earn payload.
+3. Redeems V2 **source/access links** at `/a/:code` and `/s/:code` (also `?access=`, `?src=`).
+4. Surfaces a private-mode banner and an access-code field instead of a generic backend error.
+
+Old Earn register/login/wallet calls still work against local `server.mjs`. They will not succeed against live private-mode mudrexxback until a V2 access grant is present **and** the Earn wallet surface exists on that contract.
 
 ---
 

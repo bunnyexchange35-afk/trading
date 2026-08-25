@@ -16,7 +16,7 @@ export default {
     const url = new URL(request.url);
 
     // Proxy backend API calls
-    if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/a/')) {
+    if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/a/') || url.pathname.startsWith('/s/')) {
       let backend;
 
       // Check KV first (change URL without redeploy)

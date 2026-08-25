@@ -1418,3 +1418,36 @@ textarea::placeholder {
   background: rgba(8, 6, 22, 0.92) !important;
   border-color: rgba(255, 255, 255, 0.1) !important;
 }
+
+.notice-bar.notice-private,
+.notice-bar.notice-v2 {
+  gap: 10px;
+  flex-wrap: wrap;
+  background: #1a1028;
+  color: #f0e7ff;
+}
+.notice-bar.notice-private {
+  background: linear-gradient(90deg, #2a1230, #1a1028 45%, #12182c);
+  color: #ffd7a8;
+}
+.notice-bar.notice-private button,
+.notice-bar.notice-v2 button {
+  border: 1px solid rgba(255, 215, 168, 0.35);
+  background: rgba(255, 215, 168, 0.12);
+  color: inherit;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 800;
+}
+.access-form {
+  margin: 18px 0 8px;
+}
+.access-link-page {
+  min-height: 40vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #c9c2e0;
+  font-size: 14px;
+}
