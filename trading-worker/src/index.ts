@@ -1,45 +1,41 @@
-/**
- * Cloudflare Worker for Mudrexx Earn.
- *
- * Responsibilities:
- *  1. Serve the built Vite frontend from static assets (`../dist`).
- *  2. Proxy `/api/*` requests to the Express backend so relative API calls
- *     continue to work when the frontend is hosted separately on Cloudflare.
- *
- * The backend origin is configured through the `BACKEND_ORIGIN` environment
- * variable, for example:
- *
- *   npx wrangler deploy --var BACKEND_ORIGIN:https://api.your-backend.example.com
- */
-
 export interface Env {
   ASSETS: Fetcher;
+  KV: KVNamespace;
   BACKEND_ORIGIN?: string;
 }
 
-function jsonResponse(body: unknown, status = 200): Response {
+function jsonResponse(body, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: {
-      'content-type': 'application/json; charset=utf-8',
-    },
+    headers: { 'content-type': 'application/json; charset=utf-8' },
   });
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request, env) {
     const url = new URL(request.url);
 
-    // Proxy backend API calls to the Express service.
-    if (url.pathname.startsWith('/api/')) {
-      const backend = env.BACKEND_ORIGIN?.trim();
+    // Proxy backend API calls
+    if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/a/')) {
+      let backend;
+
+      // Check KV first (change URL without redeploy)
+      try {
+        const kvValue = await env.KV?.get('config:backend-url');
+        if (kvValue && kvValue.trim()) {
+          backend = kvValue.trim();
+        }
+      } catch {}
+
+      // Fall back to env var
+      if (!backend) {
+        backend = env.BACKEND_ORIGIN?.trim();
+      }
+
       if (!backend) {
         return jsonResponse(
-          {
-            error:
-              'BACKEND_ORIGIN is not configured. Set it to the Mudrexx Express backend URL.',
-          },
-          503,
+          { error: 'Backend URL not configured. Set config:backend-url in mudrexx KV or BACKEND_ORIGIN var.' },
+          503
         );
       }
 
@@ -59,7 +55,7 @@ export default {
       });
     }
 
-    // Serve the built frontend (SPA fallback is handled by the asset config).
+    // Serve the frontend
     return env.ASSETS.fetch(request);
   },
-} satisfies ExportedHandler<Env>;
+};

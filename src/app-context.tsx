@@ -59,6 +59,9 @@ function sanitizeUser(data: unknown): User | null {
     phone: raw.phone || '',
     preferredCurrency: raw.preferredCurrency || 'INR',
     registeredAt: raw.registeredAt || new Date().toISOString(),
+    inviteCode: typeof raw.inviteCode === 'string' ? raw.inviteCode : '',
+    invitedBy: typeof raw.invitedBy === 'string' ? raw.invitedBy : '',
+    invitedByType: raw.invitedByType === 'admin' || raw.invitedByType === 'user' ? raw.invitedByType : '',
     wallet,
   };
 }

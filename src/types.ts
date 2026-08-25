@@ -52,6 +52,9 @@ export type User = {
   phone?: string;
   preferredCurrency?: 'INR' | 'USDT';
   registeredAt: string;
+  inviteCode?: string;
+  invitedBy?: string;
+  invitedByType?: 'admin' | 'user' | '';
   wallet: UserWallet;
 };
 
@@ -60,6 +63,7 @@ export type AuthProfile = {
   email: string;
   phone?: string;
   preferredCurrency?: 'INR' | 'USDT';
+  inviteCode?: string;
 };
 
 export type Session = {

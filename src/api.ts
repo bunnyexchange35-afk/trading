@@ -235,6 +235,25 @@ export type ProfileResponse = {
   error?: string;
 };
 
+export type AdminInvitedUser = {
+  name: string;
+  email: string;
+  phone?: string;
+  registeredAt: string;
+  invitedBy: string;
+  invitedByType?: 'admin' | 'user' | '';
+  realBalance: number;
+  demoBalance: number;
+  lastActivity?: string;
+};
+
+export type AdminInvitedUsersResponse = {
+  success: boolean;
+  code?: string;
+  users?: AdminInvitedUser[];
+  error?: string;
+};
+
 // ---------------------------------------------------------------------------
 // 1. Health & Markets
 // ---------------------------------------------------------------------------
@@ -265,6 +284,11 @@ export async function loginUser(email: string, name?: string): Promise<AuthRespo
 
 export async function getCurrentUser(email: string): Promise<MeResponse> {
   return request<MeResponse>(`/api/auth/me?email=${encodeURIComponent(email)}`);
+}
+
+/** List every account that registered with the given admin invitation code. */
+export async function getAdminInvitedUsers(code: string): Promise<AdminInvitedUsersResponse> {
+  return request<AdminInvitedUsersResponse>(`/api/admin/invited-users?code=${encodeURIComponent(code)}`);
 }
 
 export async function updateProfile(data: {
