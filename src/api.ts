@@ -572,6 +572,20 @@ export async function redeemAccessLink(kind: AccessKind, code: string): Promise<
     if (!fromLink.accessRequired || fromLink.user) return fromLink;
   }
 
+  // Detect the backend contract before attempting the POST redemption endpoints.
+  // The live V2 mudrexx-control API grants sessions through the GET link/cookie
+  // and returns 405 (Method Not Allowed) for these POSTs — probing first keeps
+  // that console noise out of the V2 private-mode flow.
+  let probe: AuthSnapshot;
+  try {
+    probe = await probeAuth();
+  } catch {
+    probe = { contract: 'unknown', type: 'anonymous', accessRequired: false, user: null, raw: null };
+  }
+  if (probe.contract === 'v2') {
+    return probe;
+  }
+
   const payloads = [
     { path: '/api/auth/access', body: { code: trimmed, kind } },
     { path: '/api/access/redeem', body: { code: trimmed, token: trimmed, kind } },

@@ -1451,3 +1451,183 @@ textarea::placeholder {
   color: #c9c2e0;
   font-size: 14px;
 }
+
+/* ============================================================================
+   MOBILE RESPONSIVENESS HARDENING
+   Loaded after styles.css on purpose, so these structural rules win.
+   Fixes clipping, crowding and horizontal overflow on small screens.
+   ============================================================================ */
+
+/* Private / V2 notice bars wrap instead of clipping inside their fixed height */
+.notice-bar.notice-private,
+.notice-bar.notice-v2 {
+  height: auto;
+  min-height: 33px;
+  padding: 7px 12px;
+  text-align: center;
+  justify-content: center;
+}
+.notice-bar.notice-private svg,
+.notice-bar.notice-v2 svg {
+  flex-shrink: 0;
+}
+
+/* Header: keep the wallet pill compact so it never crowds the menu button */
+@media (max-width: 700px) {
+  .header-balance-pill {
+    padding: 3px 7px 3px 9px;
+    gap: 6px;
+  }
+  .header-balance-link .balance-label {
+    display: none;
+  }
+}
+@media (max-width: 560px) {
+  .header-convert-quick {
+    display: none;
+  }
+  .header-frozen-tag {
+    display: none;
+  }
+}
+@media (max-width: 400px) {
+  .header-balance-pill {
+    display: none;
+  }
+}
+
+/* 10s exchange intro: allow vertical scroll so copy/card/ticker never clip */
+@media (max-width: 700px) {
+  .entry-experience.exchange-intro {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .exchange-center {
+    justify-content: flex-start;
+    padding-top: 92px;
+    padding-bottom: 70px;
+  }
+  .exchange-topbar {
+    gap: 10px;
+  }
+}
+@media (max-width: 560px) {
+  .exchange-connected {
+    display: none;
+  }
+  .exchange-showcase {
+    padding: 24px 16px;
+  }
+  .exchange-copy p {
+    margin-bottom: 18px;
+  }
+  .exchange-ticker {
+    gap: 8px;
+  }
+}
+@media (max-width: 380px) {
+  .exchange-copy h1 {
+    font-size: 30px;
+  }
+}
+
+/* Wallet toolbar: account pills stack full-width on phones */
+.account-switcher-pills {
+  flex-wrap: wrap;
+}
+@media (max-width: 700px) {
+  .account-switcher-pills {
+    width: 100%;
+    flex-direction: column;
+  }
+  .account-switcher-pills button {
+    width: 100%;
+    justify-content: flex-start;
+    white-space: normal;
+  }
+  .demo-link-badge {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
+/* Card headings (ratio boxes, activity filters) wrap instead of squashing */
+.card-heading {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+/* Conversion modal balance row stacks vertically on small screens */
+.modal-balance-status-row {
+  flex-wrap: wrap;
+  gap: 10px;
+}
+@media (max-width: 560px) {
+  .modal-balance-status-row {
+    flex-direction: column;
+    align-items: stretch;
+    text-align: center;
+  }
+}
+
+/* Withdraw callout wraps on phones */
+.withdraw-balance-callout {
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* Conversion arrow points downward once the inputs stack vertically */
+@media (max-width: 850px) {
+  .conversion-arrow-divider {
+    transform: rotate(90deg);
+    margin: -2px 0;
+  }
+}
+
+/* Flight Lab / Instant Order wallet pills wrap instead of overflowing */
+.demo-wallet {
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+@media (max-width: 470px) {
+  .demo-wallet {
+    width: auto;
+  }
+}
+.practice-badge {
+  max-width: 100%;
+}
+.order-wallet-pills {
+  max-width: 100%;
+}
+
+/* Let long button labels wrap instead of overflowing narrow viewports */
+@media (max-width: 470px) {
+  .btn {
+    white-space: normal;
+  }
+}
+
+/* Anchor targets clear the sticky header when deep-linking on mobile */
+.settings-card[id],
+[id='conversion-desk'],
+[id='frozen-section'] {
+  scroll-margin-top: 128px;
+}
+
+/* Rows with trailing meta keep their text readable on narrow screens */
+.activity-details {
+  min-width: 0;
+}
+.setting-row > div {
+  min-width: 0;
+}
+
+/* Telegram contact links (@MEDRIXEARN) render inline inside text blocks */
+.deposit-help-card.compact a {
+  display: inline;
+  color: #57d7ff;
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}

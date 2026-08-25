@@ -9,7 +9,7 @@ import {
 import { useApp } from './app-context';
 import type { Asset } from './data';
 
-const TELEGRAM_URL = import.meta.env.VITE_TELEGRAM_URL || 'https://t.me/mudrexxearn_support';
+const TELEGRAM_URL = import.meta.env.VITE_TELEGRAM_URL || 'https://t.me/MEDRIXEARN';
 
 export function Logo({ light = false }: { light?: boolean }) {
   return (
@@ -265,7 +265,7 @@ export function SiteFooter() {
             <ShieldCheck size={16} /> Never share your password, OTP, or wallet recovery phrase.
           </p>
           <a href={TELEGRAM_URL} target="_blank" rel="noreferrer">
-            Telegram support <ExternalLink size={13} />
+            Telegram @MEDRIXEARN <ExternalLink size={13} />
           </a>
         </div>
       </div>
@@ -288,7 +288,7 @@ export function ContactButton() {
     >
       <MessageCircle size={20} />
       <span>Contact us</span>
-      <small>Telegram</small>
+      <small>@MEDRIXEARN</small>
     </a>
   );
 }

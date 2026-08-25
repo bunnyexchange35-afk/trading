@@ -8,6 +8,8 @@ import {
 import { PageHero } from './components';
 import { useApp } from './app-context';
 
+const TELEGRAM_URL = import.meta.env.VITE_TELEGRAM_URL || 'https://t.me/MEDRIXEARN';
+
 type Rail = 'inr' | 'usdt';
 type InrMethod = 'upi' | 'bank';
 
@@ -366,7 +368,13 @@ export default function Deposit() {
             <Landmark />
             <div>
               <strong>Need help funding?</strong>
-              <p>The global contact button opens Telegram support.</p>
+              <p>
+                Contact us on{' '}
+                <a href={TELEGRAM_URL} target="_blank" rel="noreferrer">
+                  Telegram @MEDRIXEARN
+                </a>
+                .
+              </p>
             </div>
           </div>
         </aside>
