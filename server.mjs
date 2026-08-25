@@ -64,6 +64,47 @@ function loadUsersFromDisk() {
 // In-Memory User and Wallet State Store (keyed by email)
 const userDb = new Map();
 
+// Invitation / admin codes. Configure more with the ADMIN_CODES env var
+// (comma separated). Anyone who registers with one of these codes is
+// attached to the code owner and shows up on that admin's panel.
+const adminCodes = (process.env.ADMIN_CODES || 'MUDREXX-ADMIN,ADMIN-2024')
+  .split(',')
+  .map((value) => String(value || '').trim().toLowerCase())
+  .filter(Boolean);
+
+const inviteChars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+function generateInviteCode() {
+  let suffix = '';
+  for (let index = 0; index < 8; index += 1) {
+    suffix += inviteChars[Math.floor(Math.random() * inviteChars.length)];
+  }
+  return `MUD-${suffix}`;
+}
+
+function normalizeInviteCode(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+// Resolve a registration invitation code against admin codes and existing users.
+function resolveInvitationCode(code, newEmail) {
+  const normalized = normalizeInviteCode(code);
+  if (!normalized) return { ok: true, invitedBy: '', invitedByType: '' };
+
+  if (adminCodes.includes(normalized)) {
+    return { ok: true, invitedBy: normalized, invitedByType: 'admin' };
+  }
+
+  for (const [email, record] of userDb) {
+    if (email === newEmail) continue;
+    if (record.inviteCode && normalizeInviteCode(record.inviteCode) === normalized) {
+      return { ok: true, invitedBy: email, invitedByType: 'user' };
+    }
+  }
+
+  return { ok: false, error: 'That invitation code is not valid. Leave it blank if you do not have one.' };
+}
+
 function getOrCreateUser(email, name = '') {
   const normalized = String(email || 'demo@mudrexx.com').trim().toLowerCase();
   if (!userDb.has(normalized)) {    // New user registration starts with ZERO balance and 10,000 demo credits
@@ -73,6 +114,9 @@ function getOrCreateUser(email, name = '') {
       phone: '',
       preferredCurrency: 'INR',
       registeredAt: new Date().toISOString(),
+      inviteCode: generateInviteCode(),
+      invitedBy: '',
+      invitedByType: '',
       wallet: {
         realBalance: 0,
         realUsdtBalance: 0,
@@ -101,7 +145,39 @@ function getOrCreateUser(email, name = '') {
     });
     persist();
   }
-  return userDb.get(normalized);
+
+  const user = userDb.get(normalized);
+  if (user && !user.inviteCode) {
+    user.inviteCode = generateInviteCode();
+    persist();
+  }
+  return user;
+}
+
+// Attach an invitation code (admin/referral) to a freshly registered user.
+function attachInvitation(user, inviteCode) {
+  const resolved = resolveInvitationCode(inviteCode, user.email);
+  if (!resolved.ok) return resolved;
+  if (resolved.invitedBy) {
+    user.invitedBy = resolved.invitedBy;
+    user.invitedByType = resolved.invitedByType;
+    user.wallet.transactions.unshift({
+      id: `tx-invite-${Date.now()}`,
+      title: 'Joined via Invitation Code',
+      description:
+        resolved.invitedByType === 'admin'
+          ? `This account is attached to admin code ${resolved.invitedBy.toUpperCase()}`
+          : `This account was invited by ${resolved.invitedBy}`,
+      time: 'Just now',
+      amount: 0,
+      currency: 'INR',
+      type: 'reward',
+      tone: 'neutral',
+      status: 'completed',
+    });
+    persist();
+  }
+  return { ok: true };
 }
 
 app.disable('x-powered-by');
@@ -259,13 +335,19 @@ app.get('/api/market/klines', async (req, res) => {
 
 // Register new user -> balance is strictly ZERO
 app.post('/api/auth/register', (req, res) => {
-  const { name, email, phone, preferredCurrency } = req.body || {};
+  const { name, email, phone, preferredCurrency, inviteCode } = req.body || {};
   if (!email) return res.status(400).json({ error: 'Email is required' });
 
   const normalized = email.trim().toLowerCase();
   const user = getOrCreateUser(normalized, name);
   if (phone) user.phone = phone;
   if (preferredCurrency) user.preferredCurrency = preferredCurrency;
+
+  if (inviteCode) {
+    const attached = attachInvitation(user, inviteCode);
+    if (!attached.ok) return res.status(400).json({ error: attached.error });
+  }
+
   persist();
 
   res.json({
@@ -274,6 +356,29 @@ app.post('/api/auth/register', (req, res) => {
     user,
     token: `mudrexx_jwt_${Buffer.from(normalized).toString('base64')}`,
   });
+});
+
+// Admin / invitation panel: list every account that used an admin code.
+app.get('/api/admin/invited-users', (req, res) => {
+  const code = normalizeInviteCode(req.query.code);
+  if (!code) return res.status(400).json({ error: 'Admin code is required' });
+  if (!adminCodes.includes(code)) return res.status(403).json({ error: 'Invalid admin code' });
+
+  const users = [...userDb.values()]
+    .filter((user) => user.invitedBy === code)
+    .map((user) => ({
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      registeredAt: user.registeredAt,
+      invitedBy: user.invitedBy,
+      invitedByType: user.invitedByType,
+      realBalance: Number(user.wallet?.realBalance || 0),
+      demoBalance: Number(user.wallet?.demoBalance || 0),
+      lastActivity: user.wallet?.transactions?.[0]?.time || '—',
+    }));
+
+  res.json({ success: true, code, users });
 });
 
 // Login

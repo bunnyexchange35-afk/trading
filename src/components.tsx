@@ -89,25 +89,6 @@ export function SiteHeader() {
                 {label}
               </NavLink>
             ))}
-            <div className="mobile-auth">
-              {!user ? (
-                <>
-                  <button className="btn btn-ghost" onClick={() => openAuth('signin')}>
-                    Sign in
-                  </button>
-                  <button className="btn btn-dark" onClick={() => openAuth('signup')}>
-                    Register (₹0 Balance)
-                  </button>
-                </>
-              ) : (
-                <div className="mobile-user-summary">
-                  <span>Balance: ₹{totalNet.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-                  <Link to="/wallet" className="btn btn-purple btn-sm">
-                    Open Wallet
-                  </Link>
-                </div>
-              )}
-            </div>
           </nav>
 
           <div className="header-actions">
@@ -128,17 +109,6 @@ export function SiteHeader() {
                   <span>Convert Demo</span>
                 </button>
               </div>
-            )}
-
-            {!user && (
-              <button className="text-button signin-button" onClick={() => openAuth('signin')}>
-                Sign in
-              </button>
-            )}
-            {!user && (
-              <button className="btn btn-dark signup-button" onClick={() => openAuth('signup')}>
-                Get started <ArrowRight size={15} />
-              </button>
             )}
 
             <div className="profile-wrap" ref={profileRef}>
@@ -349,11 +319,12 @@ export function AuthModal() {
     const data = new FormData(event.currentTarget);
     const email = String(data.get('email') || 'member@example.com');
     const fullName = String(data.get('name') || email.split('@')[0]);
+    const inviteCode = String(data.get('inviteCode') || '').trim();
     const isSignup = mode === 'signup';
 
     setLoading(true);
     try {
-      await authenticate({ name: fullName, email }, isSignup);
+      await authenticate({ name: fullName, email, inviteCode }, isSignup);
       notify(
         isSignup ? 'Account registered! 🎉' : 'Welcome back!',
         isSignup
@@ -427,6 +398,17 @@ export function AuthModal() {
             Email address
             <input name="email" type="email" placeholder="you@example.com" required />
           </label>
+          {mode === 'signup' && (
+            <label>
+              Invitation / Admin code
+              <span className="label-hint">Optional</span>
+              <input
+                name="inviteCode"
+                placeholder="e.g. MUDREXX-ADMIN"
+                autoComplete="off"
+              />
+            </label>
+          )}
           <label>
             Password
             <span className="label-hint">8+ characters</span>
