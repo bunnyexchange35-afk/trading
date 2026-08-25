@@ -1,6 +1,6 @@
 # Mudrexx Earn Backend API Documentation
 
-Base URL: `http://localhost:8080` (Local) / `https://<your-render-app>.onrender.com` (Render Production)
+Base URL: `http://localhost:8080` (Local) / set `BACKEND_ORIGIN` on the Cloudflare Worker (Production)
 
 All request bodies are in `application/json` and responses return standard JSON.
 
@@ -9,7 +9,7 @@ All request bodies are in `application/json` and responses return standard JSON.
 ## 1. System & Market Data APIs
 
 ### `GET /api/health`
-Health check probe for uptime monitoring and hosting platforms (e.g. Render, Northflank).
+Health check probe for uptime monitoring and hosting platforms.
 
 **Response `200 OK`:**
 ```json

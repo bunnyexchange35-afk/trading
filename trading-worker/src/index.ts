@@ -9,7 +9,7 @@
  * The backend origin is configured through the `BACKEND_ORIGIN` environment
  * variable, for example:
  *
- *   npx wrangler deploy --var BACKEND_ORIGIN:https://mudrexx-earn.onrender.com
+ *   npx wrangler deploy --var BACKEND_ORIGIN:https://api.your-backend.example.com
  */
 
 export interface Env {

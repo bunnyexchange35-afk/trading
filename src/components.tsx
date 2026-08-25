@@ -624,10 +624,10 @@ export function EntryExperience() {
     if (!visible) return;
     const timer = window.setInterval(() => {
       setElapsed((value) => {
-        if (value >= 29) {
+        if (value >= 9) {
           sessionStorage.setItem('mudrexx-intro-seen', '1');
           setVisible(false);
-          return 30;
+          return 10;
         }
         return value + 1;
       });
@@ -641,86 +641,102 @@ export function EntryExperience() {
   };
 
   if (!visible) return null;
-  const copy =
-    elapsed < 6
-      ? ['Your wealth journey begins', 'One wallet. Every opportunity.']
-      : elapsed < 14
-      ? ['Markets, brought to life', 'Watch value move in real time.']
-      : elapsed < 23
-      ? ['Open your eyes to possibility', 'Clarity before every decision.']
-      : ['Welcome to Mudrexx Earn', 'Trade with confidence. Grow with purpose.'];
+
+  const phase = elapsed < 3 ? 0 : elapsed < 6 ? 1 : elapsed < 8 ? 2 : 3;
+  const copy = [
+    ['Savings', 'Simple, Safe, Current Deposit, Earn Interest Immediately'],
+    ['Markets, brought to life', 'Spot, Futures, Staking — live Binance feeds in one desk.'],
+    ['Trade with confidence', 'Practice now, then convert demo winnings into real INR.'],
+    ['Welcome to Mudrexx Earn', 'Your exchange journey begins here.'],
+  ][phase];
 
   return (
-    <div className="entry-experience">
-      <div className="entry-aurora" />
-      <div className="entry-stars">
-        {Array.from({ length: 18 }, (_, index) => (
-          <i key={index} />
-        ))}
+    <div className="entry-experience exchange-intro">
+      <div className="exchange-backdrop">
+        <div className="exchange-grid" />
+        <div className="exchange-glow glow-blue" />
+        <div className="exchange-glow glow-pink" />
       </div>
-      <div className="entry-top">
+
+      <div className="exchange-topbar">
         <Logo light />
+        <div className="exchange-nav-pills" aria-hidden="true">
+          <span className="active">Dashboard</span>
+          <span>DEX Swap</span>
+          <span>Dev Loan</span>
+          <span>Buy &amp; Sell</span>
+          <span>Charts</span>
+        </div>
+        <span className="exchange-connected">
+          <i /> Connected
+        </span>
         <button onClick={close}>
           Skip intro <ArrowRight size={15} />
         </button>
       </div>
-      <div className="entry-content">
-        <div className="entry-copy" key={copy[0]}>
-          <span>
-            <Sparkles size={15} /> THE FUTURE OF YOUR WEALTH
-          </span>
-          <h1>{copy[0]}</h1>
-          <p>{copy[1]}</p>
-        </div>
-        <div className="wealth-scene" aria-label="Animated wallet opening with a delighted investor">
-          <div className="orbit orbit-one">
-            <i className="mini-coin">₿</i>
-          </div>
-          <div className="orbit orbit-two">
-            <i className="mini-coin">Ξ</i>
-          </div>
-          <div className="character">
-            <div className="character-hair" />
-            <div className="character-head">
-              <span className="eye left">
-                <i />
-              </span>
-              <span className="eye right">
-                <i />
-              </span>
-              <span className="character-mouth" />
-            </div>
-            <div className="character-neck" />
-            <div className="character-body">
-              <i />
+
+      <div className="exchange-center">
+        <section className="exchange-showcase">
+          <div className="exchange-copy" key={copy[0]}>
+            <span className="exchange-eyebrow">
+              <Sparkles size={14} /> MUDREXX EXCHANGE
+            </span>
+            <h1>{copy[0]}</h1>
+            <p>{copy[1]}</p>
+            <div className={`exchange-cta ${phase === 3 ? 'show' : ''}`}>
+              <span>Claim Trial Funds</span>
+              <ArrowRight size={16} />
             </div>
           </div>
-          <div className="wallet-scene">
-            <div className="wealth-rays" />
-            <div className="wallet-back">
-              <span className="card card-one">M</span>
-              <span className="card card-two">
-                <BadgeCheck size={18} />
-              </span>
+
+          <div className="exchange-card-scene" aria-label="Floating Mudrexx exchange card with live chart">
+            <span className="exchange-coin coin-btc">₿</span>
+            <span className="exchange-coin coin-eth">Ξ</span>
+            <span className="exchange-chip chip-1">BTC +2.4%</span>
+            <span className="exchange-chip chip-2">ETH +1.5%</span>
+            <span className="exchange-chip chip-3">₹10,000 DEMO</span>
+
+            <div className="exchange-card">
+              <div className="exchange-card-top">
+                <Logo light />
+                <span className="exchange-card-chip" />
+              </div>
+              <div className="exchange-card-screen">
+                <span className="screen-tag">MUDREXX / LIVE</span>
+                <svg className="screen-chart" viewBox="0 0 240 80" preserveAspectRatio="none" aria-hidden="true">
+                  <path
+                    className="chart-grid"
+                    d="M0 20H240M0 40H240M0 60H240M30 0V80M90 0V80M150 0V80M210 0V80"
+                  />
+                  <path className="chart-area" d="M0 64 L18 58 L36 66 L54 44 L72 52 L90 32 L108 40 L126 22 L144 36 L162 18 L180 30 L198 12 L216 24 L240 16 L240 80 L0 80 Z" />
+                  <path className="chart-line" d="M0 64 L18 58 L36 66 L54 44 L72 52 L90 32 L108 40 L126 22 L144 36 L162 18 L180 30 L198 12 L216 24 L240 16" />
+                  <circle className="chart-dot" cx="198" cy="12" r="3" />
+                </svg>
+                <div className="screen-stats">
+                  <span><b>BTC/USDT</b><em>₹4,82,410</em></span>
+                  <span className="up">+2.4%</span>
+                  <span className="screen-pulse" />
+                </div>
+              </div>
+              <div className="exchange-card-bottom">
+                <span>•••• 8842</span>
+                <span>MUDREXX</span>
+              </div>
             </div>
-            <div className="wallet-flap">
-              <span className="wallet-button" />
-            </div>
-            <div className="wallet-front">
-              <Logo light />
-              <span className="wallet-balance">WEALTH WALLET</span>
-            </div>
-            {Array.from({ length: 7 }, (_, index) => (
-              <span key={index} className={`flying-coin flying-coin-${index + 1}`}>
-                {index % 2 ? '₹' : '₿'}
-              </span>
-            ))}
           </div>
+        </section>
+
+        <div className="exchange-ticker" aria-hidden="true">
+          <span><i>BTC</i> ₹4,82,410 <b className="up">+2.4%</b></span>
+          <span><i>ETH</i> ₹2,05,113 <b className="up">+1.5%</b></span>
+          <span><i>USDT</i> ₹83.21 <b className="up">+0.1%</b></span>
+          <span><i>SOL</i> ₹1,44,890 <b className="down">-0.8%</b></span>
         </div>
       </div>
-      <div className="entry-progress">
-        <span style={{ width: `${(elapsed / 30) * 100}%` }} />
-        <small>{30 - elapsed}s</small>
+
+      <div className="entry-progress exchange-progress">
+        <span style={{ width: `${(elapsed / 10) * 100}%` }} />
+        <small>{10 - elapsed}s</small>
       </div>
     </div>
   );

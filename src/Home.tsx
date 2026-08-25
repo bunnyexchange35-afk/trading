@@ -135,7 +135,7 @@ export default function Home() {
           </div>
         </div>
         <button className="watch-intro" onClick={() => window.dispatchEvent(new Event('replay-intro'))}>
-          <Play size={14} fill="currentColor" /> Watch 30s experience
+          <Play size={14} fill="currentColor" /> Watch 10s experience
         </button>
       </section>
 
