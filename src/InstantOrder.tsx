@@ -121,7 +121,7 @@ export default function InstantOrder() {
         <div>
           <span className="eyebrow">Instant order desk</span>
           <h1>See the market. Choose your direction.</h1>
-          <p>Live Binance charting with real frozen-escrow orders and linked demo practice scenarios.</p>
+          <p>Live Coinbase charting with real frozen-escrow orders and linked demo practice scenarios.</p>
         </div>
         <div className="order-wallet-pills">
           <div className="practice-badge">
@@ -187,7 +187,7 @@ export default function InstantOrder() {
           />
           <div className="chart-disclaimer">
             <span>
-              <Activity /> Streaming {symbol}/USDT public market data
+              <Activity /> Streaming {symbol} Coinbase market data
             </span>
             <span>Real orders place funds into your Wallet's Frozen Amount section</span>
           </div>
@@ -417,26 +417,36 @@ function LiveChart({
 
     loadCandles();
     const poller = window.setInterval(loadCandles, 15_000);
-    const socket = new WebSocket(`wss://stream.binance.com:9443/ws/${symbol.toLowerCase()}usdt@kline_${interval}`);
-    socket.onopen = () => setStreaming(true);
+    // Coinbase Exchange public WebSocket — subscribe to the ticker channel for
+    // every quote currency we support; the REST poller above stays the source
+    // of truth for candle history, this stream only nudges the live candle.
+    const candidates = ['USDT', 'USD', 'USDC'].map((quote) => `${symbol}-${quote}`);
+    const socket = new WebSocket('wss://ws-feed.exchange.coinbase.com');
+    socket.onopen = () => {
+      setStreaming(true);
+      socket.send(JSON.stringify({ type: 'subscribe', product_ids: candidates, channels: ['ticker'] }));
+    };
     socket.onmessage = (event) => {
       if (!active) return;
       try {
         const packet = JSON.parse(event.data) as {
-          k: { t: number; o: string; h: string; l: string; c: string; v: string };
+          type?: string;
+          price?: string;
+          time?: string;
         };
-        const next = {
-          time: packet.k.t,
-          open: Number(packet.k.o),
-          high: Number(packet.k.h),
-          low: Number(packet.k.l),
-          close: Number(packet.k.c),
-          volume: Number(packet.k.v),
-        };
+        if (packet.type !== 'ticker' || !packet.price) return;
+        const livePrice = Number(packet.price);
+        if (!Number.isFinite(livePrice) || livePrice <= 0) return;
         setCandles((current) => {
-          const trimmed = current.slice(-79);
-          if (trimmed.at(-1)?.time === next.time) return [...trimmed.slice(0, -1), next];
-          return [...trimmed, next];
+          if (!current.length) return current;
+          const last = current[current.length - 1];
+          const next = {
+            ...last,
+            close: livePrice,
+            high: Math.max(last.high, livePrice),
+            low: Math.min(last.low, livePrice),
+          };
+          return [...current.slice(0, -1), next];
         });
       } catch {
         /* malformed stream packet */

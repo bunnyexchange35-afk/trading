@@ -6,26 +6,27 @@
    ============================================================================ */
 
 :root {
-  --purple: #8b6cff;
-  --purple-dark: #6a4cf5;
-  --purple-soft: rgba(139, 108, 255, 0.16);
-  --ink: #eef1ff;
-  --muted: #a39cc4;
-  --border: rgba(255, 255, 255, 0.12);
-  --soft: #120d27;
-  --green: #3ae2a4;
-  --green-soft: rgba(58, 226, 164, 0.14);
-  --red: #ff6e8c;
-  --red-soft: rgba(255, 110, 140, 0.14);
-  --navy: #0a0620;
+  /* Mudrex India inspired: electric lime on near-black, mint + violet accents */
+  --purple: #c3f53c;
+  --purple-dark: #a9e21f;
+  --purple-soft: rgba(195, 245, 60, 0.12);
+  --ink: #eef2e8;
+  --muted: #98a08f;
+  --border: rgba(255, 255, 255, 0.09);
+  --soft: #101408;
+  --green: #3ce68c;
+  --green-soft: rgba(60, 230, 140, 0.13);
+  --red: #ff6b7a;
+  --red-soft: rgba(255, 107, 122, 0.13);
+  --navy: #070b08;
 
-  --space-bg: #05030f;
-  --space-card: #120d27;
-  --space-card-2: #171130;
-  --space-card-3: #0e0a24;
-  --c-cyan: #57d7ff;
-  --c-magenta: #ff5df1;
-  --c-glow: 0 0 24px rgba(139, 108, 255, 0.35);
+  --space-bg: #060a07;
+  --space-card: #0d120c;
+  --space-card-2: #131a11;
+  --space-card-3: #0a0f09;
+  --c-cyan: #35d9a8;
+  --c-magenta: #8b6cff;
+  --c-glow: 0 0 24px rgba(195, 245, 60, 0.28);
 }
 
 /* ---------------------------------------------------------------- backdrop */
@@ -112,7 +113,7 @@ body {
   height: 620px;
   top: -220px;
   left: -140px;
-  background: radial-gradient(circle, rgba(139, 108, 255, 0.55), rgba(87, 215, 255, 0.08) 55%, transparent 70%);
+  background: radial-gradient(circle, rgba(195, 245, 60, 0.3), rgba(53, 217, 168, 0.08) 55%, transparent 70%);
   animation: nebulaDrift 24s ease-in-out infinite;
 }
 .nebula-b {
@@ -120,7 +121,7 @@ body {
   height: 720px;
   right: -240px;
   bottom: -260px;
-  background: radial-gradient(circle, rgba(255, 93, 241, 0.4), rgba(87, 215, 255, 0.06) 55%, transparent 70%);
+  background: radial-gradient(circle, rgba(139, 108, 255, 0.32), rgba(53, 217, 168, 0.06) 55%, transparent 70%);
   animation: nebulaDrift 30s ease-in-out infinite reverse;
 }
 
@@ -1630,4 +1631,848 @@ textarea::placeholder {
   font-weight: 800;
   text-decoration: underline;
   text-underline-offset: 3px;
+}
+
+/* ============================================================================
+   MUDREX INDIA THEME — electric lime on near-black
+   Recolors the space theme with a Mudrex-inspired palette (lime #c3f53c,
+   mint #3ce68c, teal #35d9a8, violet #8b6cff on #060a07). Every animation,
+   keyframe and motion rule above is preserved — this block only overrides
+   colors, backgrounds and borders.
+   ============================================================================ */
+
+/* ---------------------------------------------------------------- brand */
+.brand-mark {
+  background: #0b0f0d !important;
+  border: 1px solid #262e29;
+  box-shadow: 0 8px 22px rgba(195, 245, 60, 0.16) !important;
+}
+.brand-mark-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.brand-copy em {
+  color: var(--purple) !important;
+}
+.brand-light .brand-copy em {
+  color: var(--purple) !important;
+}
+
+/* ---------------------------------------------------------------- header */
+.notice-bar {
+  background: #0a0f0a !important;
+  color: #b9c2ad !important;
+  border-bottom: 1px solid rgba(195, 245, 60, 0.12);
+}
+.notice-bar svg {
+  color: var(--purple) !important;
+}
+.site-header {
+  background: rgba(6, 10, 7, 0.86) !important;
+  border-bottom-color: rgba(255, 255, 255, 0.07) !important;
+}
+.main-nav > a {
+  color: #98a08f !important;
+}
+.main-nav > a:hover,
+.main-nav > a.active {
+  color: #eef2e8 !important;
+}
+.profile-button {
+  background: #0d120c !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  color: #dbe4d2 !important;
+}
+.profile-active {
+  background: var(--purple-soft) !important;
+  color: var(--purple) !important;
+  border-color: rgba(195, 245, 60, 0.35) !important;
+}
+
+/* ---------------------------------------------------------------- hero */
+.page-hero {
+  background: linear-gradient(180deg, #0a0f0a 0%, #060a07 100%) !important;
+  border-bottom-color: rgba(255, 255, 255, 0.07) !important;
+}
+.page-hero h1 {
+  color: #f2f6ec !important;
+}
+.page-hero > div > p {
+  color: #98a08f !important;
+}
+.eyebrow,
+.eyebrow-light {
+  color: var(--purple) !important;
+}
+.home-hero {
+  background:
+    radial-gradient(900px 520px at 78% 12%, rgba(195, 245, 60, 0.09), transparent 60%),
+    radial-gradient(760px 480px at 18% 90%, rgba(53, 217, 168, 0.07), transparent 55%),
+    linear-gradient(180deg, rgba(6, 10, 7, 0.2), transparent 65%) !important;
+}
+.hero-kicker span {
+  background: rgba(195, 245, 60, 0.1) !important;
+  color: #d6f779 !important;
+  border: 1px solid rgba(195, 245, 60, 0.28);
+}
+.hero-kicker span i {
+  background: var(--purple) !important;
+}
+.hero-kicker b {
+  color: #98a08f !important;
+}
+.hero-copy h1 em {
+  color: var(--purple) !important;
+  text-shadow: 0 0 28px rgba(195, 245, 60, 0.6);
+}
+.hero-copy > p {
+  color: #a9b1a0 !important;
+}
+.hero-trust span {
+  color: #b9c2ad !important;
+}
+.hero-trust svg {
+  color: var(--purple) !important;
+}
+.portfolio-card {
+  background: linear-gradient(158deg, rgba(20, 26, 17, 0.94), rgba(9, 13, 8, 0.97)) !important;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.65), 0 0 50px rgba(195, 245, 60, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.07) !important;
+}
+.portfolio-card .mini-chart .chart-fill {
+  fill: rgba(195, 245, 60, 0.24) !important;
+}
+.portfolio-card .mini-chart .chart-line {
+  stroke: var(--purple) !important;
+}
+.floating-token {
+  background: rgba(13, 18, 12, 0.94) !important;
+  border-color: rgba(195, 245, 60, 0.2) !important;
+}
+.hero-profit-card em {
+  background: var(--purple-soft) !important;
+  color: var(--purple) !important;
+}
+
+/* ---------------------------------------------------------------- ticker */
+.ticker-section {
+  background: transparent !important;
+}
+.section-label b {
+  color: var(--purple) !important;
+}
+.ticker-card {
+  background: rgba(13, 18, 12, 0.72) !important;
+  border-color: rgba(255, 255, 255, 0.07) !important;
+}
+.ticker-card:hover {
+  border-color: rgba(195, 245, 60, 0.35) !important;
+  background: rgba(17, 23, 15, 0.9) !important;
+}
+.ticker-name strong {
+  color: #eef2e8 !important;
+}
+.ticker-name small,
+.ticker-price small {
+  color: #98a08f !important;
+}
+.ticker-price > strong {
+  color: #f2f6ec !important;
+}
+.ticker-price > span.up {
+  color: var(--green) !important;
+}
+.ticker-price > span.down {
+  color: var(--red) !important;
+}
+
+/* ---------------------------------------------------------------- products */
+.product-section {
+  background:
+    radial-gradient(800px 500px at 50% 0%, rgba(195, 245, 60, 0.05), transparent 60%),
+    transparent !important;
+}
+.product-purple,
+.product-mint,
+.product-peach {
+  background:
+    linear-gradient(155deg, rgba(22, 29, 19, 0.9), rgba(9, 13, 8, 0.96)),
+    radial-gradient(400px 300px at 80% 0%, rgba(195, 245, 60, 0.1), transparent 60%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+}
+.product-card::before {
+  background: radial-gradient(circle, rgba(53, 217, 168, 0.1), transparent 65%);
+}
+.product-icon,
+.spot-art,
+.direction-art > span,
+.earn-art > div,
+.community-grid article > span,
+.support-action-icon,
+.empty-state > span,
+.side-card-icon {
+  background: rgba(195, 245, 60, 0.07) !important;
+  color: var(--purple) !important;
+  border: 1px solid rgba(195, 245, 60, 0.16);
+}
+.product-card > span,
+.product-card > p,
+.product-card > a,
+.spot-art small,
+.earn-art small,
+.direction-art small {
+  color: #a9b1a0 !important;
+}
+.product-card h3,
+.spot-art strong,
+.earn-art strong,
+.direction-art strong {
+  color: #f2f6ec !important;
+}
+.spot-art {
+  background: rgba(9, 13, 8, 0.9) !important;
+}
+.product-card .spot-bars i {
+  background: linear-gradient(var(--purple), var(--c-cyan)) !important;
+}
+.product-card .spot-card span {
+  color: var(--green) !important;
+  background: var(--green-soft) !important;
+}
+.direction-art .direction-up {
+  background: rgba(60, 230, 140, 0.1) !important;
+  border-color: rgba(60, 230, 140, 0.35) !important;
+  color: #6ff0bd !important;
+}
+.direction-art .direction-down {
+  background: rgba(255, 107, 122, 0.1) !important;
+  border-color: rgba(255, 107, 122, 0.35) !important;
+  color: #ff8ba2 !important;
+}
+
+/* ---------------------------------------------------------------- steps */
+.steps-section {
+  background: transparent !important;
+}
+.steps-copy ul li > span {
+  background: rgba(195, 245, 60, 0.12) !important;
+  color: var(--purple) !important;
+}
+.steps-copy ul strong {
+  color: #eef2e8 !important;
+}
+.steps-copy ul p {
+  color: #98a08f !important;
+}
+.phone-shell {
+  background: linear-gradient(160deg, rgba(22, 29, 19, 0.95), rgba(9, 13, 8, 0.98)) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+.phone-shell > p,
+.phone-shell > small {
+  color: #98a08f !important;
+}
+.phone-shell h3,
+.phone-asset span {
+  color: #eef2e8 !important;
+}
+.phone-asset small {
+  color: #98a08f !important;
+}
+.phone-asset b.up {
+  color: var(--green) !important;
+}
+.phone-asset b.down {
+  color: var(--red) !important;
+}
+.phone-top i {
+  background: var(--purple) !important;
+}
+.phone-actions span {
+  background: rgba(255, 255, 255, 0.05) !important;
+  color: #b9c2ad !important;
+}
+.phone-actions svg {
+  color: var(--purple) !important;
+}
+.secure-float {
+  background: rgba(195, 245, 60, 0.1) !important;
+  color: var(--purple) !important;
+  border-color: rgba(195, 245, 60, 0.3) !important;
+}
+
+/* ---------------------------------------------------------------- cta */
+.cta-card {
+  background:
+    linear-gradient(125deg, #c3f53c, #7ee05b),
+    radial-gradient(500px 300px at 80% 10%, rgba(255, 255, 255, 0.35), transparent 60%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5), 0 0 70px rgba(195, 245, 60, 0.25);
+}
+.cta-card > div:nth-child(2) span,
+.cta-card h2,
+.cta-card p {
+  color: #0a0e09 !important;
+}
+.cta-spark {
+  background: rgba(10, 14, 9, 0.12) !important;
+  color: #0a0e09 !important;
+}
+.cta-card .btn-white {
+  background: #0a0e09 !important;
+  color: #d9ff70 !important;
+  border: 0 !important;
+}
+
+/* ---------------------------------------------------------------- footer */
+.site-footer {
+  background:
+    radial-gradient(900px 400px at 50% 120%, rgba(195, 245, 60, 0.08), transparent 60%),
+    #070b07 !important;
+}
+.footer-grid a:hover {
+  color: var(--purple) !important;
+}
+.feed-badge i {
+  background: var(--purple) !important;
+  box-shadow: 0 0 0 4px rgba(195, 245, 60, 0.12) !important;
+}
+
+/* ---------------------------------------------------------------- buttons */
+.btn-dark,
+.btn-white,
+.btn-soft {
+  background: linear-gradient(155deg, #1b2416, #0d120c) !important;
+  color: #eef2e8 !important;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45) !important;
+}
+.btn-purple {
+  background: linear-gradient(125deg, #d2ff62, #a9e21f) !important;
+  color: #0a0e09 !important;
+  box-shadow: 0 8px 26px rgba(195, 245, 60, 0.28) !important;
+}
+.btn-purple:hover {
+  background: linear-gradient(125deg, #ddff82, #bdf23c) !important;
+  box-shadow: 0 12px 34px rgba(195, 245, 60, 0.4) !important;
+}
+.text-button {
+  color: #dbe8c6 !important;
+}
+.contact-button {
+  background: linear-gradient(140deg, #c3f53c, #35d9a8) !important;
+  color: #0a0e09 !important;
+  box-shadow: 0 12px 38px rgba(53, 217, 168, 0.4) !important;
+}
+
+/* ---------------------------------------------------------------- market */
+.market-overview {
+  background: #0d120c !important;
+  grid-template-columns: repeat(4, 1fr) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45) !important;
+}
+.market-overview > div {
+  border-right-color: rgba(255, 255, 255, 0.08) !important;
+}
+.market-overview span,
+.market-overview small {
+  color: #98a08f !important;
+}
+.market-overview strong {
+  color: #f2f6ec !important;
+}
+.market-overview strong em {
+  color: #98a08f !important;
+}
+.market-overview .positive {
+  color: var(--green) !important;
+}
+.market-overview .negative {
+  color: var(--red) !important;
+}
+.market-status > span {
+  background: rgba(195, 245, 60, 0.1) !important;
+  color: #d6f779 !important;
+  border-color: rgba(195, 245, 60, 0.3) !important;
+}
+.market-status > span.connected {
+  background: rgba(60, 230, 140, 0.1) !important;
+  color: #6ff0bd !important;
+  border-color: rgba(60, 230, 140, 0.3) !important;
+}
+.market-status small {
+  color: #98a08f !important;
+}
+.market-status button {
+  color: var(--purple) !important;
+}
+.market-card {
+  background: rgba(13, 18, 12, 0.94) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5) !important;
+}
+.market-toolbar,
+.market-row-group,
+.market-card-footer {
+  border-color: rgba(255, 255, 255, 0.07) !important;
+}
+.market-tabs button {
+  color: #98a08f !important;
+}
+.market-tabs button.active {
+  background: rgba(195, 245, 60, 0.13) !important;
+  color: var(--purple) !important;
+}
+.market-table-head {
+  background: rgba(195, 245, 60, 0.05) !important;
+  color: #98a08f !important;
+  border-bottom-color: rgba(255, 255, 255, 0.08) !important;
+}
+.market-table-head .vault-b {
+  font-style: normal;
+  background: rgba(195, 245, 60, 0.16);
+  color: #d6f779;
+  border-radius: 6px;
+  padding: 1px 5px;
+  margin-left: 4px;
+  font-size: 8px;
+}
+.market-row {
+  background: transparent !important;
+  color: #eef2e8;
+}
+.market-row:hover,
+.row-expanded .market-row {
+  background: rgba(195, 245, 60, 0.05) !important;
+}
+.asset-cell > svg {
+  color: rgba(195, 245, 60, 0.5) !important;
+}
+.asset-cell strong {
+  color: #eef2e8 !important;
+}
+.asset-cell small,
+.price-cell,
+.market-card-footer small,
+.pair-selector label > span,
+.market-price small,
+.trade-stats small {
+  color: #98a08f !important;
+}
+.price-cell {
+  color: #f2f6ec !important;
+}
+.apy-cell {
+  color: var(--green) !important;
+}
+.apy-cell.apy-locked {
+  color: var(--purple) !important;
+}
+.apy-cell small {
+  color: #98a08f !important;
+}
+.row-chevron svg {
+  color: #6f7867 !important;
+}
+.row-expanded .row-chevron svg {
+  color: var(--purple) !important;
+}
+.row-foldout {
+  background: rgba(10, 14, 9, 0.97) !important;
+  border-color: rgba(255, 255, 255, 0.09) !important;
+}
+.foldout-icon {
+  background: rgba(195, 245, 60, 0.1) !important;
+  color: var(--purple) !important;
+}
+.foldout-summary strong {
+  color: #eef2e8 !important;
+}
+.foldout-summary p,
+.foldout-meta,
+.stake-facts small,
+.stake-input-wrap b,
+.foldout-form label > span {
+  color: #98a08f !important;
+}
+.stake-facts b {
+  color: #eef2e8 !important;
+}
+.stake-facts span {
+  border-right-color: rgba(255, 255, 255, 0.09) !important;
+}
+.stake-input-wrap label {
+  background: #0d120c !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+}
+.stake-input-wrap input,
+.foldout-form input {
+  color: #eef2e8 !important;
+}
+.foldout-form label > div {
+  background: #0d120c !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+}
+.foldout-form label strong {
+  color: #eef2e8 !important;
+}
+.equals {
+  color: #6f7867 !important;
+}
+.market-card-footer {
+  background: rgba(10, 14, 9, 0.7) !important;
+  color: #98a08f !important;
+}
+.market-card-footer strong {
+  color: #b9c2ad !important;
+}
+.currency-toggle {
+  background: rgba(255, 255, 255, 0.06) !important;
+}
+.currency-toggle button {
+  color: #98a08f !important;
+}
+.currency-toggle button.active {
+  background: rgba(195, 245, 60, 0.16) !important;
+  color: #d6f779 !important;
+  box-shadow: none !important;
+}
+.search-box {
+  background: #0d120c !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+  color: #98a08f !important;
+}
+.search-box input {
+  color: #eef2e8 !important;
+}
+
+/* category filter chips (Mudrex-style discoverability) */
+.category-strip {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 12px 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+.category-strip button {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: transparent;
+  color: #98a08f;
+  border-radius: 20px;
+  padding: 6px 13px;
+  font-size: 11px;
+  font-weight: 700;
+  transition: 0.2s ease;
+}
+.category-strip button:hover {
+  border-color: rgba(195, 245, 60, 0.4);
+  color: #dbe4d2;
+}
+.category-strip button.active {
+  background: rgba(195, 245, 60, 0.14);
+  border-color: rgba(195, 245, 60, 0.45);
+  color: #d6f779;
+}
+.market-empty {
+  padding: 44px 18px;
+  text-align: center;
+  color: #98a08f;
+  font-size: 13px;
+}
+
+/* A/B DeFi staking tier toggle */
+.vault-tier-toggle {
+  display: flex;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 4px;
+}
+.vault-tier-toggle button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  background: transparent;
+  color: #98a08f;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 8px 13px;
+  border-radius: 9px;
+  transition: 0.2s ease;
+}
+.vault-tier-toggle button span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #98a08f;
+  font-size: 10px;
+}
+.vault-tier-toggle button.active {
+  background: rgba(195, 245, 60, 0.14);
+  color: #d6f779;
+}
+.vault-tier-toggle button.active span {
+  background: var(--purple);
+  color: #0a0e09;
+}
+
+/* Delta-style UP/DOWN scenario chips in the futures foldout */
+.scenario-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.scenario-strip > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 7px 12px;
+  border-radius: 9px;
+  border: 1px solid;
+}
+.scenario-up {
+  background: rgba(60, 230, 140, 0.1);
+  border-color: rgba(60, 230, 140, 0.35);
+  color: #6ff0bd;
+}
+.scenario-down {
+  background: rgba(255, 107, 122, 0.1);
+  border-color: rgba(255, 107, 122, 0.35);
+  color: #ff8ba2;
+}
+.scenario-strip small {
+  color: #98a08f;
+  font-size: 10px;
+}
+
+/* ------------------------------------------------------- instant order */
+.practice-badge {
+  background: rgba(13, 18, 12, 0.95) !important;
+}
+.practice-badge strong {
+  color: #eef2e8 !important;
+}
+.practice-badge small,
+.demo-wallet small,
+.demo-tag {
+  color: #98a08f !important;
+}
+.trade-panel,
+.order-form-card {
+  background: rgba(12, 16, 11, 0.97) !important;
+}
+.trade-header,
+.order-form-card > header,
+.chart-disclaimer,
+.chart-toolbar {
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+.pair-selector select,
+.pair-selector select option {
+  color: #eef2e8 !important;
+  background: #0d120c !important;
+}
+.pair-selector label > span,
+.order-form-card > header span,
+.field-label small,
+.chart-disclaimer,
+.chart-loader,
+.chart-times,
+.preview-note {
+  color: #98a08f !important;
+}
+.direction-buttons button,
+.choice-row button,
+.quick-amounts button,
+.amount-suggestions button {
+  background: rgba(13, 18, 12, 0.92) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  color: #b9c2ad !important;
+}
+.direction-buttons button > span {
+  background: rgba(195, 245, 60, 0.1) !important;
+  color: #d6f779 !important;
+}
+.choice-row button.active {
+  color: #d6f779 !important;
+  background: rgba(195, 245, 60, 0.13) !important;
+  border-color: rgba(195, 245, 60, 0.4) !important;
+}
+.demo-wallet {
+  background: rgba(195, 245, 60, 0.09) !important;
+}
+.demo-wallet > span {
+  background: rgba(195, 245, 60, 0.16) !important;
+  color: #d6f779 !important;
+}
+.aviator-shell {
+  background:
+    radial-gradient(800px 500px at 50% 0%, rgba(53, 217, 168, 0.06), transparent 60%),
+    rgba(10, 14, 9, 0.94) !important;
+}
+.flight-stage {
+  background:
+    linear-gradient(180deg, rgba(6, 10, 7, 0.4), rgba(13, 18, 12, 0.7)),
+    radial-gradient(600px 400px at 60% 20%, rgba(53, 217, 168, 0.08), transparent 60%) !important;
+}
+
+/* ---------------------------------------------------------------- deposit */
+.deposit-main-card,
+.deposit-help-card {
+  background: rgba(12, 16, 11, 0.97) !important;
+}
+.deposit-progress {
+  color: #98a08f !important;
+}
+.deposit-progress b {
+  background: var(--purple) !important;
+  color: #0a0e09 !important;
+}
+.side-card-icon.mint {
+  background: rgba(60, 230, 140, 0.1) !important;
+  color: #6ff0bd !important;
+}
+.deposit-help-card.compact a {
+  color: var(--purple) !important;
+}
+
+/* ------------------------------------------------------- forms & modals */
+.auth-modal,
+.profile-menu,
+.toast,
+.deposit-success,
+.result-modal,
+.conversion-box,
+.tip-card {
+  background: rgba(13, 18, 12, 0.98) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+.auth-heading > span {
+  color: var(--purple) !important;
+}
+.auth-tabs {
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+.auth-tabs button.active {
+  background: rgba(195, 245, 60, 0.14) !important;
+  color: #d6f779 !important;
+}
+.auth-form input:not([type=checkbox]),
+.settings-form input,
+.settings-form select,
+.deposit-form label > input,
+.input-with-icon,
+.withdraw-form input:not([type=checkbox]),
+.connect-form input,
+.identity-form input,
+.support-form input {
+  background: #0d120c !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+  color: #eef2e8 !important;
+}
+.auth-form input:focus,
+.settings-form input:focus,
+.settings-form select:focus {
+  border-color: rgba(195, 245, 60, 0.55) !important;
+  box-shadow: 0 0 0 3px rgba(195, 245, 60, 0.1) !important;
+}
+.toast-info > span {
+  background: rgba(195, 245, 60, 0.14) !important;
+  color: #d6f779 !important;
+}
+.toast-success > span {
+  background: rgba(60, 230, 140, 0.14) !important;
+  color: #6ff0bd !important;
+}
+
+/* ------------------------------------------------------- wallet & account */
+.wallet-balance-card {
+  background: linear-gradient(125deg, #c3f53c, #5ecf6e) !important;
+  color: #0a0e09 !important;
+}
+.wallet-balance-card h2,
+.balance-breakdown-row,
+.balance-card-header {
+  color: #0a0e09 !important;
+}
+.balance-breakdown-row span {
+  color: #10240d !important;
+}
+.balance-card-header small {
+  background: rgba(10, 14, 9, 0.14) !important;
+}
+.live-status-dot {
+  color: #10240d !important;
+}
+.live-status-dot i {
+  background: #0a0e09 !important;
+  box-shadow: 0 0 0 3px rgba(10, 14, 9, 0.2) !important;
+}
+.wallet-stat-card,
+.settings-card,
+.empty-state,
+.frozen-item-card,
+.faq-card,
+.account-nav {
+  background: rgba(13, 18, 12, 0.94) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+.account-nav > a.active {
+  background: rgba(195, 245, 60, 0.13) !important;
+  color: #d6f779 !important;
+}
+.stat-card-icon {
+  background: rgba(60, 230, 140, 0.1) !important;
+  color: #6ff0bd !important;
+}
+.stat-card-icon.frozen-icon {
+  background: rgba(255, 183, 77, 0.12) !important;
+  color: #ffc36b !important;
+}
+.stat-card-icon.demo-icon {
+  background: rgba(195, 245, 60, 0.12) !important;
+  color: #d6f779 !important;
+}
+.link-pill.linked {
+  background: rgba(60, 230, 140, 0.12) !important;
+  color: #6ff0bd !important;
+  border-color: rgba(60, 230, 140, 0.3) !important;
+}
+.link-pill.unlinked {
+  background: rgba(255, 183, 77, 0.12) !important;
+  color: #ffc36b !important;
+  border-color: rgba(255, 183, 77, 0.3) !important;
+}
+
+/* ------------------------------------------------------- responsive guards */
+@media (max-width: 850px) {
+  .market-overview {
+    grid-template-columns: 1fr 1fr !important;
+  }
+  .market-overview > div:nth-child(2) {
+    border-right: 0 !important;
+  }
+}
+@media (max-width: 700px) {
+  .market-overview {
+    grid-template-columns: 1fr !important;
+  }
+  .market-overview > div {
+    border-right: 0 !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+    padding: 14px 0 !important;
+  }
+  .market-overview > div:last-child {
+    border-bottom: 0 !important;
+  }
 }

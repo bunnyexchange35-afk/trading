@@ -150,7 +150,7 @@ export type HealthResponse = {
 
 export type MarketsResponse = {
   data: MarketQuote[];
-  source: 'binance' | 'fallback';
+  source: 'coinbase' | 'fallback';
   cached?: boolean;
   message?: string;
 };

@@ -843,7 +843,7 @@ export function SupportPage() {
     'How do I convert demo credits to real wallet balance?',
     'Why is an amount marked as Frozen in my wallet?',
     'Which network should I use for USDT?',
-    'How are live Binance prices calculated?',
+    'How are live Coinbase prices calculated?',
     'How can I secure my account?',
   ];
 

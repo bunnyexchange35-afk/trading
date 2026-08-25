@@ -15,7 +15,7 @@ A responsive crypto market, wallet desk, and practice-trading web experience bui
 - **Persistent Sessions**:
   - Safe session persistence in `localStorage`. Logged-in users are never repeatedly prompted for login when navigating or taking actions.
 - **Home Landing Page**: With a 10-second exchange-style launch animation and live portfolio overview.
-- **Live Market Desk**: Spot, Futures, and Staking tabs with Binance public market feeds.
+- **Live Market Desk**: Spot, Futures, and DeFi Staking tabs with live Coinbase public market feeds across 32 assets, INR/USDT price views, category filters, and A-tier flexible + B-tier locked 30-day staking vaults.
 - **Instant Order Desk & Flight Lab**: Live chart scenarios, buy up / buy down controls, and multiplier mini-game.
 - **Deposit Experience**: UPI / Bank transfer (INR) and TRC20 (USDT) funding flows recorded in the Frozen Amount section.
 
@@ -25,7 +25,7 @@ The React frontend (`src/`) is fully driven by the Mudrexx Express backend (`ser
 
 - **Auth & sessions**: sign-up / sign-in run through `POST /api/auth/register` and `POST /api/auth/login`; the session token is persisted in `localStorage` and re-validated against `GET /api/auth/me` on every visit.
 - **Wallet controls**: demo-to-real conversion, deposits, approvals, frozen releases, orders, staking vaults, demo grants and Flight Lab wagers all execute as backend calls via the typed client in `src/api.ts`. The UI refreshes from the backend after every mutation, so balances and the Frozen Amount section always reflect server state.
-- **Markets**: live quotes and klines are served by the backend from Binance public feeds with built-in fallback.
+- **Markets**: live quotes and klines are served from Coinbase Exchange public feeds with built-in warm-cache fallback. The Cloudflare Worker serves `/api/markets`, `/api/market/klines` and `/api/health` natively (no backend needed); `server.mjs` implements the same endpoints for local development.
 - **Persistence**: user state is stored on disk at `server/data/users.json` (gitignored), so accounts survive backend restarts and redeploys.
 
 In development, Vite proxies `/api` (and V2 `/a`, `/s` access links) to the Express server (`:8080`); in production the Cloudflare Worker serves the built frontend and proxies those paths to `BACKEND_ORIGIN`.

@@ -14,3 +14,4 @@ server/*.db-wal
 server/*.sqlite
 server/*.sqlite-shm
 server/*.sqlite-wal
+.wrangler/

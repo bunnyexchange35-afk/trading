@@ -6,19 +6,57 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const port = Number(process.env.PORT || 8080);
-const symbols = ['BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'ETC', 'ADA', 'DOGE'];
+const symbols = [
+  'BTC', 'ETH', 'SOL', 'XRP', 'DOGE', 'ADA', 'LTC', 'LINK',
+  'AVAX', 'DOT', 'POL', 'UNI', 'AAVE', 'ATOM', 'XLM', 'SHIB',
+  'NEAR', 'APT', 'ARB', 'OP', 'SUI', 'PEPE', 'BONK', 'FIL',
+  'TON', 'INJ', 'RENDER', 'SEI', 'ONDO', 'ENA', 'HBAR', 'FET',
+];
 const allowedIntervals = new Set(['1m', '5m', '15m', '1h']);
+// Coinbase candle granularities (seconds) per supported interval.
+const intervalGranularity = { '1m': 60, '5m': 300, '15m': 900, '1h': 3600 };
+const coinbaseQuotes = ['USDT', 'USD', 'USDC'];
 const seed = {
-  BTC: [116430.2, 2.84], ETH: [4284.51, 1.47], BNB: [873.22, -0.64], SOL: [184.76, 4.92],
-  XRP: [2.18, -1.23], ETC: [23.74, 0.82], ADA: [0.728, 3.16], DOGE: [0.2184, -0.42],
+  BTC: [116430.2, 2.84], ETH: [4284.51, 1.47], SOL: [184.76, 4.92], XRP: [2.18, -1.23],
+  DOGE: [0.2184, -0.42], ADA: [0.728, 3.16], LTC: [92.4, 1.05], LINK: [17.85, 2.3],
+  AVAX: [26.3, 5.4], DOT: [6.42, -0.85], POL: [0.51, 1.7], UNI: [9.85, -1.4],
+  AAVE: [178.4, 2.9], ATOM: [6.85, 0.64], XLM: [0.372, 1.3], SHIB: [0.0000218, -2.1],
+  NEAR: [5.6, 3.4], APT: [8.9, -0.75], ARB: [0.94, 2.2], OP: [1.72, 1.1],
+  SUI: [2.85, 4.6], PEPE: [0.0000124, -3.2], BONK: [0.000021, 2.8], FIL: [4.85, -0.9],
+  TON: [5.3, 0.45], INJ: [18.2, 6.1], RENDER: [7.6, 3.9], SEI: [0.42, -1.8],
+  ONDO: [0.98, 2.5], ENA: [0.62, 4.1], HBAR: [0.182, 1.9], FET: [1.26, 5.2],
 };
 const assets = {
-  BTC: ['Bitcoin', '#f7931a', '#fff4e4', '₿'], ETH: ['Ethereum', '#627eea', '#eef1ff', 'Ξ'],
-  BNB: ['BNB', '#f3ba2f', '#fff9df', 'B'], SOL: ['Solana', '#7657ff', '#f2efff', 'S'],
-  XRP: ['XRP', '#23292f', '#edf0f2', 'X'], ETC: ['Ethereum Classic', '#3ab83a', '#eaf9ea', 'E'],
-  ADA: ['Cardano', '#316bd6', '#edf4ff', 'A'], DOGE: ['Dogecoin', '#c3a634', '#fff9df', 'Ð'],
+  BTC: ['Bitcoin', '#F7931A', '#2A1E0A', '₿'], ETH: ['Ethereum', '#8A9BFF', '#1B1E38', 'Ξ'],
+  SOL: ['Solana', '#14F195', '#0B2E22', '◎'], XRP: ['XRP', '#4DA7FF', '#101D33', '✕'],
+  DOGE: ['Dogecoin', '#D9B23C', '#2C2408', 'Ð'], ADA: ['Cardano', '#2F7CF6', '#0E1D3A', '₳'],
+  LTC: ['Litecoin', '#8FA3C4', '#151B26', 'Ł'], LINK: ['Chainlink', '#3A6EF5', '#0F1A3A', '⬡'],
+  AVAX: ['Avalanche', '#E84142', '#331012', '▲'], DOT: ['Polkadot', '#E6007A', '#300B22', '●'],
+  POL: ['Polygon', '#9A5BFF', '#20113A', '◆'], UNI: ['Uniswap', '#FF5DA2', '#331019', 'U'],
+  AAVE: ['Aave', '#4DE3D4', '#0D2624', 'A'], ATOM: ['Cosmos', '#8E8FE8', '#1A1A38', '⚛'],
+  XLM: ['Stellar', '#7FD8F5', '#0E252E', '✦'], SHIB: ['Shiba Inu', '#FF9E2C', '#2E1B07', 'S'],
+  NEAR: ['NEAR Protocol', '#3DE1B4', '#0B2A22', 'N'], APT: ['Aptos', '#3CD6F5', '#0C2630', 'A'],
+  ARB: ['Arbitrum', '#3FA9FF', '#0E1F33', 'A'], OP: ['Optimism', '#FF4F4F', '#301010', 'O'],
+  SUI: ['Sui', '#6FB8FF', '#101E30', 'S'], PEPE: ['Pepe', '#4FA344', '#12260F', 'P'],
+  BONK: ['Bonk', '#F7A600', '#2E2006', 'B'], FIL: ['Filecoin', '#2E9BF5', '#0D1D33', '⨎'],
+  TON: ['Toncoin', '#38A9F5', '#0D2030', 'T'], INJ: ['Injective', '#3DF0FF', '#0B2830', 'I'],
+  RENDER: ['Render', '#F5584A', '#301410', 'R'], SEI: ['Sei', '#E85D8E', '#30111E', 'S'],
+  ONDO: ['Ondo', '#4FA8F5', '#0F2033', 'O'], ENA: ['Ethena', '#6FD8F0', '#0E262E', 'E'],
+  HBAR: ['Hedera', '#A3A9B8', '#171A20', 'ℏ'], FET: ['Fetch.ai', '#9A5BFF', '#1C1233', 'F'],
 };
-const apy = { BTC: 2.8, ETH: 4.7, BNB: 3.4, SOL: 6.9, XRP: 2.2, ETC: 3.8, ADA: 5.1, DOGE: 1.8 };
+const apy = {
+  BTC: 2.8, ETH: 4.7, SOL: 6.9, XRP: 2.2, DOGE: 1.8, ADA: 5.1, LTC: 2.4, LINK: 4.3,
+  AVAX: 7.1, DOT: 8.4, POL: 4.9, UNI: 3.7, AAVE: 4.1, ATOM: 9.6, XLM: 2.6, SHIB: 3.2,
+  NEAR: 8.7, APT: 6.4, ARB: 3.4, OP: 3.9, SUI: 5.3, PEPE: 2.1, BONK: 2.9, FIL: 4.4,
+  TON: 3.6, INJ: 10.8, RENDER: 4.2, SEI: 5.8, ONDO: 5.5, ENA: 6.1, HBAR: 3.3, FET: 5.2,
+};
+// Locked 30-day "B vault" DeFi staking tier.
+const apyLocked = {
+  BTC: 3.6, ETH: 6.2, SOL: 8.4, XRP: 3.1, DOGE: 2.6, ADA: 6.4, LTC: 3.2, LINK: 5.7,
+  AVAX: 9.2, DOT: 11.6, POL: 6.3, UNI: 4.9, AAVE: 5.4, ATOM: 12.4, XLM: 3.5, SHIB: 4.4,
+  NEAR: 11.2, APT: 8.1, ARB: 4.6, OP: 5.1, SUI: 6.9, PEPE: 3.0, BONK: 4.0, FIL: 5.8,
+  TON: 4.8, INJ: 14.2, RENDER: 5.6, SEI: 7.5, ONDO: 7.1, ENA: 8.0, HBAR: 4.4, FET: 6.8,
+};
 let marketCache = null;
 let cacheAt = 0;
 
@@ -197,25 +235,49 @@ function fallbackMarkets() {
     const [price, change] = seed[symbol];
     const [name, color, soft, mark] = assets[symbol];
     return {
-      symbol, name, color, soft, mark, stakingApy: apy[symbol], price, change,
+      symbol, name, color, soft, mark, stakingApy: apy[symbol], stakingApyLocked: apyLocked[symbol],
+      price, change,
       high: price * 1.035, low: price * 0.968, volume: price * 28435,
     };
   });
 }
 
-async function fetchBinance(route) {
-  const hosts = ['https://data-api.binance.vision', 'https://api.binance.com', 'https://api1.binance.com', 'https://api.binance.us'];
+// Live Coinbase Exchange provider (public, no key required).
+async function fetchCoinbase(route) {
+  const hosts = ['https://api.exchange.coinbase.com', 'https://api.coinbase.com'];
   let lastError;
   for (const host of hosts) {
     try {
-      const response = await fetch(`${host}${route}`, { signal: AbortSignal.timeout(5500), headers: { 'User-Agent': 'MudrexxEarn/1.0' } });
-      if (!response.ok) throw new Error(`Binance returned ${response.status}`);
+      const response = await fetch(`${host}${route}`, {
+        signal: AbortSignal.timeout(5500),
+        headers: { 'User-Agent': 'MudrexxEarn/2.0' },
+      });
+      if (!response.ok) throw new Error(`Coinbase returned ${response.status}`);
       return await response.json();
     } catch (error) {
       lastError = error;
     }
   }
-  throw lastError || new Error('Market provider unavailable');
+  throw lastError || new Error('Coinbase market provider unavailable');
+}
+
+// One-shot fetch of all 24h stats and index them by product id.
+async function loadCoinbaseStats() {
+  const rows = await fetchCoinbase('/products/stats');
+  const byId = new Map();
+  for (const row of rows) {
+    if (row && row.id) byId.set(row.id, row);
+  }
+  return byId;
+}
+
+// Pick the best available Coinbase product id for a base symbol.
+function resolveCoinbasePair(byId, symbol) {
+  for (const quote of coinbaseQuotes) {
+    const id = `${symbol}-${quote}`;
+    if (byId.has(id)) return id;
+  }
+  return null;
 }
 
 // ============================================================================
@@ -274,28 +336,32 @@ app.get('/api', (_req, res) => {
 
 app.get('/api/markets', async (_req, res) => {
   if (marketCache && Date.now() - cacheAt < 8000) {
-    return res.json({ data: marketCache, source: 'binance', cached: true });
+    return res.json({ data: marketCache, source: 'coinbase', cached: true });
   }
   try {
-    const pairs = symbols.map((symbol) => `"${symbol}USDT"`).join(',');
-    const tickers = await fetchBinance(`/api/v3/ticker/24hr?symbols=${encodeURIComponent(`[${pairs}]`)}`);
+    const stats = await loadCoinbaseStats();
     marketCache = symbols.map((symbol) => {
-      const item = tickers.find((ticker) => ticker.symbol === `${symbol}USDT`);
+      const pairId = resolveCoinbasePair(stats, symbol);
+      const item = pairId ? stats.get(pairId) : null;
       const [name, color, soft, mark] = assets[symbol];
-      const price = Number(item?.lastPrice || seed[symbol][0]);
+      const last = Number(item?.last || seed[symbol][0]);
+      const open = Number(item?.open || last);
+      const change = open > 0 ? ((last - open) / open) * 100 : seed[symbol][1];
       return {
-        symbol, name, color, soft, mark, stakingApy: apy[symbol], price,
-        change: Number(item?.priceChangePercent || seed[symbol][1]),
-        high: Number(item?.highPrice || price * 1.03),
-        low: Number(item?.lowPrice || price * 0.97),
-        volume: Number(item?.quoteVolume || price * 28435),
+        symbol, name, color, soft, mark, stakingApy: apy[symbol], stakingApyLocked: apyLocked[symbol],
+        price: last,
+        change,
+        high: Number(item?.high || last * 1.03),
+        low: Number(item?.low || last * 0.97),
+        volume: Number(item?.volume || last * 28435),
+        pair: pairId ?? `${symbol}-USDT`,
       };
     });
     cacheAt = Date.now();
     res.set('Cache-Control', 'public, max-age=5');
-    res.json({ data: marketCache, source: 'binance', cached: false });
+    res.json({ data: marketCache, source: 'coinbase', cached: false });
   } catch (error) {
-    res.json({ data: fallbackMarkets(), source: 'fallback', message: error instanceof Error ? error.message : 'Provider unavailable' });
+    res.json({ data: fallbackMarkets(), source: 'fallback', message: error instanceof Error ? error.message : 'Coinbase provider unavailable' });
   }
 });
 
@@ -306,21 +372,39 @@ app.get('/api/market/klines', async (req, res) => {
     return res.status(400).json({ error: 'Unsupported market request' });
   }
   try {
-    const rows = await fetchBinance(`/api/v3/klines?symbol=${base}USDT&interval=${interval}&limit=80`);
-    const data = rows.map((row) => ({
-      time: Number(row[0]), open: Number(row[1]), high: Number(row[2]), low: Number(row[3]),
-      close: Number(row[4]), volume: Number(row[5]),
-    }));
+    // Resolve a live Coinbase pair first (fall back to the USD pair).
+    let pairId = `${base}-USDT`;
+    try {
+      const stats = await loadCoinbaseStats();
+      pairId = resolveCoinbasePair(stats, base) || `${base}-USD`;
+    } catch {
+      /* stats failed — try the default pair directly below */
+    }
+    const granularity = intervalGranularity[interval];
+    const rows = await fetchCoinbase(`/products/${pairId}/candles?granularity=${granularity}`);
+    // Coinbase candles are [time, low, high, open, close, volume], newest first.
+    const data = rows
+      .map((row) => ({
+        time: Number(row[0]) * 1000,
+        low: Number(row[1]),
+        high: Number(row[2]),
+        open: Number(row[3]),
+        close: Number(row[4]),
+        volume: Number(row[5]),
+      }))
+      .reverse()
+      .slice(-80);
     res.set('Cache-Control', 'public, max-age=8');
-    res.json({ data, source: 'binance' });
+    res.json({ data, source: 'coinbase', pair: pairId });
   } catch {
     const [start] = seed[base];
+    const step = intervalGranularity[interval] * 1000;
     let price = start * 0.975;
     const data = Array.from({ length: 80 }, (_, index) => {
       const open = price;
       price = Math.max(0.0001, price * (1 + (Math.sin(index * 1.7) + Math.random() - 0.45) * 0.0028));
       return {
-        time: Date.now() - (79 - index) * 60_000,
+        time: Date.now() - (79 - index) * step,
         open, high: Math.max(open, price) * 1.002, low: Math.min(open, price) * 0.998,
         close: price, volume: 100 + Math.random() * 900,
       };

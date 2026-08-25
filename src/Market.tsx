@@ -5,19 +5,21 @@ import {
   Layers3, Lock, Search, ShieldCheck, Sparkles, Star, TrendingUp, Wallet,
 } from 'lucide-react';
 import { CoinIcon, PageHero } from './components';
-import { compact, INR_RATE, money } from './data';
+import { CATEGORIES, compact, INR_RATE, money } from './data';
 import { useMarket } from './market-context';
 import { useApp } from './app-context';
 
 type Tab = 'spot' | 'futures' | 'staking';
+type VaultTier = 'A' | 'B';
 
 export default function Market() {
   const [params, setParams] = useSearchParams();
   const requested = params.get('tab');
   const [tab, setTab] = useState<Tab>(requested === 'staking' || requested === 'futures' ? requested : 'spot');
   const [query, setQuery] = useState('');
+  const [category, setCategory] = useState<string>('All');
   const [expanded, setExpanded] = useState<string | null>('BTC');
-  const [currency, setCurrency] = useState<'USDT' | 'INR'>('USDT');
+  const [currency, setCurrency] = useState<'USDT' | 'INR'>('INR');
   const { quotes, connected, source, refreshedAt, refresh } = useMarket();
   const { user, openAuth, addStakingVault, notify } = useApp();
 
@@ -29,20 +31,30 @@ export default function Market() {
   const setActiveTab = (next: Tab) => {
     setTab(next);
     setParams(next === 'spot' ? {} : { tab: next });
-    setExpanded(next === 'staking' ? 'SOL' : 'BTC');
+    setExpanded(next === 'staking' ? 'ETH' : 'BTC');
   };
 
   const filtered = useMemo(
-    () => quotes.filter((item) => `${item.symbol} ${item.name}`.toLowerCase().includes(query.toLowerCase())),
-    [quotes, query]
+    () =>
+      quotes.filter((item) => {
+        const matchesQuery = `${item.symbol} ${item.name}`.toLowerCase().includes(query.toLowerCase());
+        const matchesCategory = category === 'All' || item.category === category;
+        return matchesQuery && matchesCategory;
+      }),
+    [quotes, query, category]
   );
+
+  const movers = useMemo(() => [...quotes].sort((a, b) => b.change - a.change), [quotes]);
+  const topMover = movers[0];
+  const totalVolume = quotes.reduce((sum, item) => sum + item.volume, 0);
+  const defiCount = quotes.filter((item) => (item.stakingApyLocked ?? 0) >= 5).length;
 
   return (
     <main className="market-page">
       <PageHero
-        eyebrow="Live market"
-        title="Market, at a glance."
-        copy="Track prices, compare opportunities, lock staking yields into your Frozen balance, and trade directly without losing your place."
+        eyebrow="India-first crypto desk"
+        title="Every market. One live desk."
+        copy="Live Coinbase pricing across 30+ assets — INR-settled spot, futures previews and DeFi staking vaults, with zero fees on every practice spot trade."
       >
         <div className="market-status">
           <span className={connected ? 'connected' : ''}>
@@ -59,24 +71,27 @@ export default function Market() {
       <section className="container market-shell">
         <div className="market-overview">
           <div>
-            <span>Total tracked volume</span>
-            <strong>${compact(quotes.reduce((sum, item) => sum + item.volume, 0))}</strong>
-            <small>Across selected USDT pairs</small>
+            <span>Assets tracked</span>
+            <strong>{quotes.length}</strong>
+            <small>Spot · Futures · Staking</small>
           </div>
           <div>
-            <span>Market leaders</span>
-            <strong>
-              {quotes.filter((item) => item.change >= 0).length} <em>/ {quotes.length}</em>
-            </strong>
-            <small>Assets positive in 24h</small>
+            <span>Live feed</span>
+            <strong>{connected ? 'Coinbase' : 'Warm cache'}</strong>
+            <small>Public Exchange data</small>
           </div>
           <div>
-            <span>Top mover</span>
-            <strong className="positive">
-              {[...quotes].sort((a, b) => b.change - a.change)[0].symbol} +
-              {[...quotes].sort((a, b) => b.change - a.change)[0].change.toFixed(2)}%
+            <span>Spot fee</span>
+            <strong className="positive">0%</strong>
+            <small>Zero fees on practice spot</small>
+          </div>
+          <div>
+            <span>Top mover 24h</span>
+            <strong className={topMover.change >= 0 ? 'positive' : 'negative'}>
+              {topMover.symbol} {topMover.change >= 0 ? '+' : ''}
+              {topMover.change.toFixed(2)}%
             </strong>
-            <small>Past 24 hours</small>
+            <small>${compact(totalVolume)} traded volume</small>
           </div>
         </div>
         <div className="market-card">
@@ -89,7 +104,7 @@ export default function Market() {
                 <TrendingUp /> Futures
               </button>
               <button className={tab === 'staking' ? 'active' : ''} onClick={() => setActiveTab('staking')}>
-                <Sparkles /> Staking
+                <Sparkles /> DeFi Staking
               </button>
             </div>
             <div className="market-tools">
@@ -100,29 +115,40 @@ export default function Market() {
               {tab !== 'staking' && (
                 <div className="currency-toggle">
                   <button
-                    className={currency === 'USDT' ? 'active' : ''}
-                    onClick={() => setCurrency('USDT')}
-                  >
-                    USDT
-                  </button>
-                  <button
                     className={currency === 'INR' ? 'active' : ''}
                     onClick={() => setCurrency('INR')}
                   >
                     INR
                   </button>
+                  <button
+                    className={currency === 'USDT' ? 'active' : ''}
+                    onClick={() => setCurrency('USDT')}
+                  >
+                    USDT
+                  </button>
                 </div>
               )}
             </div>
           </header>
+          <div className="category-strip">
+            {['All', ...CATEGORIES].map((item) => (
+              <button
+                key={item}
+                className={category === item ? 'active' : ''}
+                onClick={() => setCategory(item)}
+              >
+                {item}
+              </button>
+            ))}
+          </div>
           <div className="market-table-wrap">
             <div className={`market-table-head ${tab === 'staking' ? 'staking-head' : ''}`}>
               <span>Asset</span>
               {tab === 'staking' ? (
                 <>
-                  <span>Est. APY</span>
-                  <span>Term</span>
-                  <span>Est. reward</span>
+                  <span>Flexible APY</span>
+                  <span>Locked 30D APY <em className="vault-b">B</em></span>
+                  <span>Est. reward /mo</span>
                 </>
               ) : (
                 <>
@@ -155,7 +181,7 @@ export default function Market() {
                               ? 'Perpetual'
                               : tab === 'spot'
                               ? `/ ${currency}`
-                              : 'Flexible vault'}
+                              : `${quote.category} vault`}
                           </small>
                         </span>
                       </span>
@@ -164,9 +190,12 @@ export default function Market() {
                           <span className="apy-cell">
                             {quote.stakingApy?.toFixed(1)}% <small>APY</small>
                           </span>
-                          <span>Flexible</span>
+                          <span className="apy-cell apy-locked">
+                            {quote.stakingApyLocked?.toFixed(1)}% <small>APY</small>
+                          </span>
                           <span>
-                            {(((1000 * (quote.stakingApy || 0)) / 100) / 12).toFixed(2)} {quote.symbol}/mo
+                            ₹{(((1000 * (quote.stakingApyLocked || quote.stakingApy || 0)) / 100) / 12).toFixed(0)}{' '}
+                            <small>/ ₹1,000</small>
                           </span>
                         </>
                       ) : (
@@ -206,13 +235,20 @@ export default function Market() {
                   </div>
                 );
               })}
+              {filtered.length === 0 && (
+                <div className="market-empty">
+                  No assets match “{query}”. Try another symbol or category.
+                </div>
+              )}
             </div>
           </div>
           <footer className="market-card-footer">
             <span>
-              <Info /> Prices come from Binance public endpoints. Staking vaults place funds in your Wallet's Frozen Amount section while accruing yield.
+              <Info /> Prices come from Coinbase Exchange public endpoints. Staking vaults place funds in your Wallet's Frozen Amount section while accruing yield.
             </span>
-            <strong>{filtered.length} assets</strong>
+            <strong>
+              {filtered.length} assets · {defiCount} B-tier DeFi vaults
+            </strong>
           </footer>
         </div>
       </section>
@@ -238,8 +274,10 @@ function Foldout({
   notify: ReturnType<typeof useApp>['notify'];
 }) {
   const [amount, setAmount] = useState('1000');
+  const [tier, setTier] = useState<VaultTier>('A');
   const navigate = useNavigate();
   const display = currency === 'INR' ? quote.price * INR_RATE : quote.price;
+  const tierApy = tier === 'A' ? quote.stakingApy || 4.7 : quote.stakingApyLocked || quote.stakingApy || 4.7;
 
   const handleStakeClick = async () => {
     if (!user) {
@@ -251,7 +289,7 @@ function Foldout({
       notify('Invalid amount', 'Enter a valid amount to stake in vault.', 'warning');
       return;
     }
-    const success = await onStake(quote.symbol, val, quote.stakingApy || 4.7);
+    const success = await onStake(quote.symbol, val, tierApy);
     if (success) {
       navigate('/wallet#frozen-section');
     }
@@ -273,22 +311,34 @@ function Foldout({
             <Layers3 />
           </span>
           <div>
-            <strong>Flexible {quote.symbol} vault</strong>
-            <p>Locked in Frozen Balance while accruing daily yield. Unstake anytime.</p>
+            <strong>{tier === 'A' ? 'Flexible' : 'Locked'} {quote.symbol} vault</strong>
+            <p>
+              {tier === 'A'
+                ? 'Accrues daily yield in your Frozen Balance. Unstake anytime.'
+                : '30-day locked DeFi vault with a boosted B-tier rate.'}
+            </p>
           </div>
+        </div>
+        <div className="vault-tier-toggle">
+          <button className={tier === 'A' ? 'active' : ''} onClick={() => setTier('A')}>
+            <span>A</span> Flexible
+          </button>
+          <button className={tier === 'B' ? 'active' : ''} onClick={() => setTier('B')}>
+            <span>B</span> Locked 30D
+          </button>
         </div>
         <div className="stake-facts">
           <span>
             <small>Est. APY</small>
-            <b>{quote.stakingApy}%</b>
+            <b>{tierApy.toFixed(1)}%</b>
           </span>
           <span>
             <small>Lock category</small>
-            <b>Frozen Vault</b>
+            <b>{tier === 'A' ? 'Flexible Vault' : 'Locked Vault · 30D'}</b>
           </span>
           <span>
             <small>Redemption</small>
-            <b>Instant</b>
+            <b>{tier === 'A' ? 'Instant' : 'After 30 days'}</b>
           </span>
         </div>
         <div className="stake-input-wrap">
@@ -317,10 +367,10 @@ function Foldout({
           <Wallet />
         </span>
         <div>
-          <strong>{tab === 'futures' ? `${quote.symbol} scenario` : `Quick buy ${quote.symbol}`}</strong>
+          <strong>{tab === 'futures' ? `${quote.symbol} UP/DOWN preview` : `Quick buy ${quote.symbol}`}</strong>
           <p>
             {tab === 'futures'
-              ? 'Preview an UP or DOWN direction from the instant order desk.'
+              ? 'Practice both directions of the market from the instant order desk.'
               : 'Enter an amount to see your estimated asset quantity.'}
           </p>
         </div>
@@ -347,6 +397,17 @@ function Foldout({
           </div>
         </label>
       </div>
+      {tab === 'futures' && (
+        <div className="scenario-strip">
+          <span className="scenario-up">
+            <TrendingUp size={12} /> UP <b>+{(quote.change >= 0 ? quote.change : Math.abs(quote.change) / 2).toFixed(1)}%</b>
+          </span>
+          <span className="scenario-down">
+            <ArrowDownRight size={12} /> DOWN <b>−{(quote.change < 0 ? Math.abs(quote.change) : quote.change / 2).toFixed(1)}%</b>
+          </span>
+          <small>Both directions settle on the order desk</small>
+        </div>
+      )}
       <div className="foldout-meta">
         <span>
           <Clock3 /> Live estimate
