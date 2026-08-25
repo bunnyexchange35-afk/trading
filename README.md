@@ -115,18 +115,18 @@ needed. Set it up in the Cloudflare dashboard:
 
 Notes:
 
-- The backend origin must be set through the `BACKEND_ORIGIN` variable; leave
-  the project name and asset directory from `trading-worker/wrangler.jsonc`.
+- The backend can be connected via Cloudflare Worker **Service Bindings** (`services` in `trading-worker/wrangler.jsonc` bound to `BACKEND`), through the `BACKEND_ORIGIN` variable, or via KV `config:backend-url`.
 - API calls are same-origin (`/api/*`), so no CORS changes are needed when the
   worker proxies to the backend.
-- You can also set `BACKEND_ORIGIN` in the Cloudflare dashboard under
-  **Settings -> Variables and Secrets**.
+- You can also set `BACKEND_ORIGIN` or service bindings in the Cloudflare dashboard under
+  **Settings -> Variables and Secrets** / **Settings -> Bindings**.
 
-## Environment Variables
+## Environment Variables & Bindings
 
-| Variable | Type | Description |
+| Variable / Binding | Type | Description |
 | --- | --- | --- |
-| `BACKEND_ORIGIN` | Cloudflare Worker | Origin of the Express API that the worker proxies `/api/*` to |
+| `BACKEND` | Service Binding | Cloudflare Worker Service Binding to route backend API requests directly to another Worker |
+| `BACKEND_ORIGIN` | Cloudflare Worker Var | Origin URL of the Express API that the worker proxies `/api/*` to (fallback if no service binding) |
 | `PORT` | Runtime | Port Express listens on (defaults to `process.env.PORT` or `8080`) |
 | `NODE_ENV` | Runtime | `production` in deployed environments |
 | `VITE_TELEGRAM_URL` | Build-time | Telegram support channel link |
