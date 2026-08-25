@@ -58,24 +58,42 @@ npm start
 ## Deploy Frontend to Cloudflare Workers
 
 The `trading-worker/` directory contains a Cloudflare Worker that serves the
-built frontend and proxies `/api/*` to the Express backend.
+built frontend and proxies `/api/*` to the Express backend. Wrangler is a root
+`devDependency`, so a single command from the repository root builds the frontend
+into `dist/` and deploys the Worker (its `assets.directory` points at `../dist`):
 
 ```bash
-cd trading-worker
-npm install
-
-# Authenticate with Cloudflare (opens a browser for OAuth)
-npx wrangler login
-
-# Build the frontend and deploy (point /api at your Express backend)
-npx wrangler deploy --var BACKEND_ORIGIN:https://api.your-backend.example.com
+npm run deploy
 ```
 
-From the repository root you can also run:
+Deploys the Worker from `trading-worker/wrangler.jsonc`. Equivalent manual steps:
 
 ```bash
-npm run worker:deploy
+npm run build                       # build frontend into dist/
+npx wrangler deploy -c trading-worker/wrangler.jsonc
 ```
+
+### Automatic deploy on push to `main` (Cloudflare Workers Builds)
+
+Cloudflare's **Workers Builds** git integration automatically builds and deploys
+on every push to your production branch — no workflow file or GitHub Actions
+needed. Set it up in the Cloudflare dashboard:
+
+1. Go to **Workers & Pages**, then either:
+   - **Create application -> Get started -> Import a repository**, selecting this
+     repo and the `main` branch, or
+   - For an existing Worker, open it -> **Settings -> Builds -> Connect**.
+2. Make sure the Worker name in the dashboard matches `trading-worker` (the name
+   in `trading-worker/wrangler.jsonc`), or the build will fail.
+3. In **Settings -> Build**, set:
+   - **Build command**: `npm run build`
+   - **Deploy command**: `npx wrangler deploy -c trading-worker/wrangler.jsonc`
+   - **Root directory**: leave blank (repo root)
+   - **Production branch**: `main`
+4. Configure the backend origin and any runtime secrets under
+   **Settings -> Variables & Secrets** (see `BACKEND_ORIGIN` below). Build-time
+   secrets (your own API token) go under **Settings -> Build -> Build variables
+   and secrets**. By default Cloudflare auto-generates the build API token.
 
 Notes:
 

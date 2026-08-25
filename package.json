@@ -10,6 +10,7 @@
     "start": "node server.mjs",
     "preview": "vite preview --host 0.0.0.0",
     "typecheck": "tsc --noEmit",
+    "deploy": "npm run build && wrangler deploy -c trading-worker/wrangler.jsonc",
     "worker:deploy": "npm --prefix trading-worker run deploy"
   },
   "engines": {
@@ -30,6 +31,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "concurrently": "^9.1.2",
     "typescript": "^5.7.2",
-    "vite": "^6.0.7"
+    "vite": "^6.0.7",
+    "wrangler": "^4.125.0"
   }
 }
