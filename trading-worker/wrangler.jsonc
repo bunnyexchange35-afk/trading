@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "trading-worker",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-08-25",
+  "assets": {
+    "directory": "../dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+  "observability": {
+    "enabled": true
+  },
+  "vars": {
+    "BACKEND_ORIGIN": ""
+  }
+}

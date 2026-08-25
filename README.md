@@ -85,6 +85,37 @@ npm run build
 npm start
 ```
 
+## Deploy Frontend to Cloudflare Workers
+
+The `trading-worker/` directory contains a Cloudflare Worker that serves the
+built frontend and proxies `/api/*` to the Express backend.
+
+```bash
+cd trading-worker
+npm install
+
+# Authenticate with Cloudflare (opens a browser for OAuth)
+npx wrangler login
+
+# Build the frontend and deploy
+npx wrangler deploy --var BACKEND_ORIGIN:https://your-render-backend.example.com
+```
+
+From the repository root you can also run:
+
+```bash
+npm run worker:deploy
+```
+
+Notes:
+
+- The backend origin must be set through the `BACKEND_ORIGIN` variable; leave
+  the project name and asset directory from `trading-worker/wrangler.jsonc`.
+- API calls are same-origin (`/api/*`), so no CORS changes are needed when the
+  worker proxies to the backend.
+- You can also set `BACKEND_ORIGIN` in the Cloudflare dashboard under
+  **Settings -> Variables and Secrets**.
+
 ## Environment Variables
 
 | Variable | Type | Description |

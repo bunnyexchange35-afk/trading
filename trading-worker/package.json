@@ -1,0 +1,14 @@
+{
+  "name": "trading-worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Cloudflare Worker for Mudrexx Earn: serves the built frontend and proxies /api to the Express backend.",
+  "scripts": {
+    "build": "npm --prefix .. run build",
+    "deploy": "npm run build && wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.11.0"
+  }
+}
