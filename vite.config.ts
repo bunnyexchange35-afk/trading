@@ -1,6 +1,8 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
+const backendTarget = process.env.BACKEND_ORIGIN || process.env.VITE_API_URL || 'http://localhost:8080';
+
 export default defineConfig({
   plugins: [react()],
   server: {
@@ -10,15 +12,19 @@ export default defineConfig({
     allowedHosts: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:8080',
+        target: backendTarget,
         changeOrigin: true,
       },
       '/a': {
-        target: 'http://localhost:8080',
+        target: backendTarget,
         changeOrigin: true,
       },
       '/s': {
-        target: 'http://localhost:8080',
+        target: backendTarget,
+        changeOrigin: true,
+      },
+      '/verify': {
+        target: backendTarget,
         changeOrigin: true,
       },
     },
@@ -29,3 +35,4 @@ export default defineConfig({
     allowedHosts: true,
   },
 });
+
