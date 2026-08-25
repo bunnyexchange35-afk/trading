@@ -12,7 +12,7 @@ import { useApp, type FrozenFundItem } from './app-context';
 import { INR_RATE, money } from './data';
 import { useMarket } from './market-context';
 
-const TELEGRAM_URL = import.meta.env.VITE_TELEGRAM_URL || 'https://t.me/mudrexxearn_support';
+const TELEGRAM_URL = import.meta.env.VITE_TELEGRAM_URL || 'https://t.me/MEDRIXEARN';
 
 export function ProfilePage() {
   const { user, openAuth, notify } = useApp();
@@ -874,7 +874,7 @@ export function SupportPage() {
               <h3>Chat on Telegram</h3>
               <p>Connect with our support channel for account and product help.</p>
               <b>
-                Open Telegram <ExternalLink />
+                Open @MEDRIXEARN <ExternalLink />
               </b>
             </div>
           </a>
