@@ -329,6 +329,16 @@ export type AdminInvitedUsersResponse = {
   error?: string;
 };
 
+/** Read-only admin user directory. This is additive to the legacy invited-users endpoint. */
+export type AdminUser = AdminInvitedUser;
+export type AdminUsersResponse = {
+  success: boolean;
+  code?: string;
+  users?: AdminUser[];
+  total?: number;
+  error?: string;
+};
+
 export async function getHealth(): Promise<HealthResponse> {
   return request<HealthResponse>('/api/health');
 }
@@ -629,6 +639,10 @@ export async function getCurrentUser(email?: string): Promise<MeResponse> {
 
 export async function getAdminInvitedUsers(code: string): Promise<AdminInvitedUsersResponse> {
   return request<AdminInvitedUsersResponse>(`/api/admin/invited-users?code=${encodeURIComponent(code)}`);
+}
+
+export async function getAdminUsers(code: string): Promise<AdminUsersResponse> {
+  return request<AdminUsersResponse>(`/api/admin/users?code=${encodeURIComponent(code)}`);
 }
 
 export async function updateProfile(data: {

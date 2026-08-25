@@ -16,6 +16,7 @@ import Market from './Market';
 import InstantOrder from './InstantOrder';
 import Deposit from './Deposit';
 import { CommunityPage, ProfilePage, SupportPage, WalletPage } from './AccountPages';
+import AdminUsersPage from './AdminUsersPage';
 
 function SpaceBackdrop() {
   return (
@@ -78,6 +79,8 @@ function AppRoutes() {
         <Route path="/wallet" element={<WalletPage />} />
         <Route path="/support" element={<SupportPage />} />
         <Route path="/community" element={<CommunityPage />} />
+        <Route path="/admin" element={<Navigate to="/admin/users" replace />} />
+        <Route path="/admin/users" element={<AdminUsersPage />} />
         <Route path="/a/:code" element={<AccessLinkPage kind="access" />} />
         <Route path="/s/:code" element={<AccessLinkPage kind="source" />} />
         <Route path="*" element={<Navigate to="/" replace />} />
