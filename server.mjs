@@ -308,6 +308,10 @@ app.get('/api', (_req, res) => {
         me: 'GET /api/auth/me?email=...',
         updateProfile: 'PUT /api/user/profile',
       },
+      admin: {
+        users: 'GET /api/admin/users?code=...',
+        invitedUsers: 'GET /api/admin/invited-users?code=...',
+      },
       wallet: {
         summary: 'GET /api/wallet/summary?email=...',
         transactions: 'GET /api/wallet/transactions?email=...',
@@ -463,6 +467,31 @@ app.get('/api/admin/invited-users', (req, res) => {
     }));
 
   res.json({ success: true, code, users });
+});
+
+// Read-only admin user directory. The legacy invited-users endpoint above is
+// intentionally unchanged; this additive endpoint lets the admin portal show
+// every account, including direct registrations without an invitation code.
+app.get('/api/admin/users', (req, res) => {
+  const code = normalizeInviteCode(req.query.code);
+  if (!code) return res.status(400).json({ error: 'Admin code is required' });
+  if (!adminCodes.includes(code)) return res.status(403).json({ error: 'Invalid admin code' });
+
+  const users = [...userDb.values()]
+    .map((user) => ({
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      registeredAt: user.registeredAt,
+      invitedBy: user.invitedBy || '',
+      invitedByType: user.invitedByType || '',
+      realBalance: Number(user.wallet?.realBalance || 0),
+      demoBalance: Number(user.wallet?.demoBalance || 0),
+      lastActivity: user.wallet?.transactions?.[0]?.time || '—',
+    }))
+    .sort((left, right) => new Date(right.registeredAt).getTime() - new Date(left.registeredAt).getTime());
+
+  res.json({ success: true, code, total: users.length, users });
 });
 
 // Login
