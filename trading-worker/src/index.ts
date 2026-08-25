@@ -1,7 +1,8 @@
 export interface Env {
   ASSETS: Fetcher;
-  KV: KVNamespace;
+  KV?: KVNamespace;
   BACKEND_ORIGIN?: string;
+  BACKEND?: Fetcher;
 }
 
 /**
@@ -253,6 +254,11 @@ export default {
 
     // Proxy backend API calls
     if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/a/') || url.pathname.startsWith('/s/')) {
+      // 1. If service binding BACKEND is configured and available:
+      if (env.BACKEND && typeof env.BACKEND.fetch === 'function') {
+        return env.BACKEND.fetch(request);
+      }
+
       let backend;
 
       // Check KV first (change URL without redeploy)
@@ -270,7 +276,7 @@ export default {
 
       if (!backend) {
         return json(
-          { error: 'Backend URL not configured. Set config:backend-url in mudrexx KV or BACKEND_ORIGIN var.' },
+          { error: 'Backend URL not configured. Set BACKEND service binding, config:backend-url in mudrexx KV, or BACKEND_ORIGIN var.' },
           503
         );
       }
