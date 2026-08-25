@@ -10,6 +10,7 @@
     "start": "node server.mjs",
     "preview": "vite preview --host 0.0.0.0",
     "typecheck": "tsc --noEmit",
+    "deploy": "npm --prefix trading-worker run deploy",
     "worker:deploy": "npm --prefix trading-worker run deploy"
   },
   "engines": {
