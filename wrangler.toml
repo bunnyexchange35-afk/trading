@@ -1,0 +1,23 @@
+# Cloudflare Pages configuration for mudrexx-earn.
+#
+# The API logic lives in `functions/` (Pages Functions) and delegates to
+# the same request handler used by the standalone Worker deployment
+# (trading-worker/src/index.ts), so the two Cloudflare surfaces stay in
+# sync: /api/markets, /api/market/klines and /api/health are served
+# natively from Coinbase data, and the remaining /api/*, /a/*, /s/* and
+# /verify paths are proxied to the Earn backend when BACKEND_ORIGIN (or
+# a BACKEND service binding / `config:backend-url` KV entry) is set.
+#
+# Custom domains are attached from the Cloudflare dashboard: Workers &
+# Pages -> mudrexx-earn -> Custom domains. The default
+# https://mudrexx-earn.pages.dev URL works without any route
+# configuration. (The old wrangler v3 `[pages] routes` + `script`
+# "Workers for Pages" syntax was removed from wrangler and is not used.)
+
+name = "mudrexx-earn"
+compatibility_date = "2026-08-26"
+
+pages_build_output_dir = "./dist"
+
+[build]
+command = "npm run build"
