@@ -1,12 +1,14 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TEST_PORT = 8799;
 const BASE_URL = `http://127.0.0.1:${TEST_PORT}`;
+const TEST_DATA_DIR = path.join(os.tmpdir(), `mudrexx-test-data-${Date.now()}`);
 
 let serverProcess;
 
@@ -24,10 +26,37 @@ async function waitForServer(url, timeoutMs = 10000) {
   throw new Error(`Server failed to start within ${timeoutMs}ms`);
 }
 
+// ---- helpers: institute invitation codes + bearer-token sign-in ----------
+const JSON_HEADERS = { 'Content-Type': 'application/json' };
+
+function authHeaders(token) {
+  return { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+}
+
+async function registerAccount(email, name, inviteCode = 'ADMIN777') {
+  const res = await fetch(`${BASE_URL}/api/auth/register`, {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ name, email, inviteCode }),
+  });
+  return { status: res.status, data: await res.json() };
+}
+
+async function signIn(email) {
+  const res = await fetch(`${BASE_URL}/api/auth/login`, {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ email }),
+  });
+  const data = await res.json();
+  assert.equal(data.success, true, `login failed for ${email}`);
+  return data.token;
+}
+
 describe('Mudrexx Earn Backend Test Suite', () => {
   before(async () => {
     serverProcess = spawn('node', [path.join(__dirname, '..', 'server.mjs')], {
-      env: { ...process.env, PORT: String(TEST_PORT), NODE_ENV: 'test' },
+      env: { ...process.env, PORT: String(TEST_PORT), NODE_ENV: 'test', DATA_DIR: TEST_DATA_DIR },
       stdio: 'pipe',
     });
     await waitForServer(BASE_URL);
@@ -94,53 +123,96 @@ describe('Mudrexx Earn Backend Test Suite', () => {
     });
   });
 
-  describe('Auth and User Flow', () => {
+  describe('Invitation-Only Registration & Sign-In Enforcement', () => {
     const testEmail = `testuser_${Date.now()}@mudrexx.com`;
+    const otherEmail = `otheruser_${Date.now()}@mudrexx.com`;
+    let token;
+    let otherToken;
 
-    test('POST /api/auth/register creates user with ₹0 real balance and 10,000 demo credits', async () => {
+    test('registration without an invitation code is rejected', async () => {
       const res = await fetch(`${BASE_URL}/api/auth/register`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: 'Test Trader',
-          email: testEmail,
-          phone: '+91 98765 43210',
-          inviteCode: 'ADMIN777',
-        }),
+        headers: JSON_HEADERS,
+        body: JSON.stringify({ name: 'No Code', email: `nocode_${Date.now()}@mudrexx.com` }),
       });
-      assert.equal(res.status, 200);
+      assert.equal(res.status, 403);
       const data = await res.json();
+      assert.match(data.error, /invitation only/i);
+    });
+
+    test('registration with an unknown code is rejected', async () => {
+      const res = await fetch(`${BASE_URL}/api/auth/register`, {
+        method: 'POST',
+        headers: JSON_HEADERS,
+        body: JSON.stringify({ name: 'Bad Code', email: `bad_${Date.now()}@mudrexx.com`, inviteCode: 'NOT-A-CODE' }),
+      });
+      assert.equal(res.status, 403);
+    });
+
+    test('user referral codes do NOT grant registration (institute codes only)', async () => {
+      const first = await registerAccount(testEmail, 'Test Trader', 'ADMIN777');
+      assert.equal(first.status, 200);
+      const referralCode = first.data.user.inviteCode; // MUD-XXXX user code
+      assert.match(referralCode, /^MUD-/);
+      const attempt = await fetch(`${BASE_URL}/api/auth/register`, {
+        method: 'POST',
+        headers: JSON_HEADERS,
+        body: JSON.stringify({ name: 'Referral Try', email: `ref_${Date.now()}@mudrexx.com`, inviteCode: referralCode }),
+      });
+      assert.equal(attempt.status, 403);
+    });
+
+    test('valid institute code registers with ₹0 real, 10,000 credits and a bearer token', async () => {
+      const { status, data } = await registerAccount(otherEmail, 'Other Trader', 'MUDREXX-SUPER');
+      assert.equal(status, 200);
       assert.equal(data.success, true);
       assert.equal(data.user.wallet.realBalance, 0);
       assert.equal(data.user.wallet.demoBalance, 10000);
-      assert.equal(data.user.invitedBy, 'ADMIN777');
+      assert.equal(data.user.invitedByType, 'super');
+      assert.match(data.token, /^mx_/);
+      otherToken = data.token;
     });
 
-    test('POST /api/auth/login logs in user', async () => {
-      const res = await fetch(`${BASE_URL}/api/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: testEmail }),
+    test('POST /api/auth/login issues a fresh bearer token', async () => {
+      token = await signIn(testEmail);
+      assert.match(token, /^mx_/);
+      assert.notEqual(token, otherToken);
+    });
+
+    test('GET /api/auth/me without a token answers anonymous', async () => {
+      const res = await fetch(`${BASE_URL}/api/auth/me`);
+      assert.equal(res.status, 200);
+      const data = await res.json();
+      assert.equal(data.anonymous, true);
+      assert.equal(data.user, null);
+    });
+
+    test('GET /api/auth/me with a token returns the signed-in account', async () => {
+      const res = await fetch(`${BASE_URL}/api/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
+      assert.equal(res.status, 200);
+      const data = await res.json();
+      assert.equal(data.success, true);
+      assert.equal(data.user.email, testEmail);
+    });
+
+    test('a token cannot read another account', async () => {
+      const res = await fetch(`${BASE_URL}/api/auth/me?email=${encodeURIComponent(otherEmail)}`, {
+        headers: { Authorization: `Bearer ${token}` },
       });
-      assert.equal(res.status, 200);
-      const data = await res.json();
-      assert.equal(data.success, true);
-      assert.equal(data.user.email, testEmail);
-      assert.ok(data.token);
+      assert.equal(res.status, 403);
     });
 
-    test('GET /api/auth/me returns user profile', async () => {
-      const res = await fetch(`${BASE_URL}/api/auth/me?email=${encodeURIComponent(testEmail)}`);
-      assert.equal(res.status, 200);
-      const data = await res.json();
-      assert.equal(data.success, true);
-      assert.equal(data.user.email, testEmail);
+    test('protected wallet endpoints require sign-in (401 without token)', async () => {
+      const res = await fetch(`${BASE_URL}/api/wallet/summary?email=${encodeURIComponent(testEmail)}`);
+      assert.equal(res.status, 401);
+      const orders = await fetch(`${BASE_URL}/api/orders/list?email=${encodeURIComponent(testEmail)}`);
+      assert.equal(orders.status, 401);
     });
 
-    test('PUT /api/user/profile updates user details', async () => {
+    test('PUT /api/user/profile updates the signed-in user', async () => {
       const res = await fetch(`${BASE_URL}/api/user/profile`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(token),
         body: JSON.stringify({ email: testEmail, name: 'Updated Trader', preferredCurrency: 'INR' }),
       });
       assert.equal(res.status, 200);
@@ -148,23 +220,31 @@ describe('Mudrexx Earn Backend Test Suite', () => {
       assert.equal(data.success, true);
       assert.equal(data.user.name, 'Updated Trader');
     });
+
+    test('GET /api/admin/invited-users filters by invitation code', async () => {
+      const res = await fetch(`${BASE_URL}/api/admin/invited-users?code=ADMIN777&inviteCode=MUDREXX-SUPER`);
+      assert.equal(res.status, 200);
+      const data = await res.json();
+      assert.equal(data.success, true);
+      assert.equal(data.total, 1);
+      assert.equal(data.users[0].email, otherEmail);
+      assert.ok(data.summary);
+    });
   });
 
   describe('Wallet, Demo Conversion, and Escrow Controls', () => {
     const testEmail = `walletuser_${Date.now()}@mudrexx.com`;
+    let token;
 
     before(async () => {
-      await fetch(`${BASE_URL}/api/auth/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'Wallet User', email: testEmail }),
-      });
+      const { data } = await registerAccount(testEmail, 'Wallet User', 'ADMIN777');
+      token = data.token;
     });
 
     test('POST /api/wallet/convert-demo converts practice credits to real balance', async () => {
       const res = await fetch(`${BASE_URL}/api/wallet/convert-demo`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(token),
         body: JSON.stringify({ email: testEmail, demoCredits: 1000 }),
       });
       assert.equal(res.status, 200);
@@ -179,7 +259,7 @@ describe('Mudrexx Earn Backend Test Suite', () => {
     test('POST /api/wallet/claim-demo tops up demo credits', async () => {
       const res = await fetch(`${BASE_URL}/api/wallet/claim-demo`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(token),
         body: JSON.stringify({ email: testEmail, amount: 5000 }),
       });
       assert.equal(res.status, 200);
@@ -191,7 +271,7 @@ describe('Mudrexx Earn Backend Test Suite', () => {
     test('POST /api/wallet/demo/adjust adjusts demo balance up and down', async () => {
       const res = await fetch(`${BASE_URL}/api/wallet/demo/adjust`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(token),
         body: JSON.stringify({ email: testEmail, delta: -2000 }),
       });
       assert.equal(res.status, 200);
@@ -203,7 +283,7 @@ describe('Mudrexx Earn Backend Test Suite', () => {
     test('POST /api/deposit/submit creates a pending deposit in frozen items', async () => {
       const res = await fetch(`${BASE_URL}/api/deposit/submit`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(token),
         body: JSON.stringify({
           email: testEmail,
           amount: 500,
@@ -219,14 +299,16 @@ describe('Mudrexx Earn Backend Test Suite', () => {
     });
 
     test('POST /api/wallet/deposit/approve approves pending deposit and moves funds to available', async () => {
-      const frozenRes = await fetch(`${BASE_URL}/api/wallet/frozen?email=${encodeURIComponent(testEmail)}`);
+      const frozenRes = await fetch(`${BASE_URL}/api/wallet/frozen?email=${encodeURIComponent(testEmail)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       const frozenData = await frozenRes.json();
       const depositItem = frozenData.items.find((i) => i.category === 'deposit' && i.canApprove);
       assert.ok(depositItem);
 
       const res = await fetch(`${BASE_URL}/api/wallet/deposit/approve`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(token),
         body: JSON.stringify({ email: testEmail, id: depositItem.id }),
       });
       assert.equal(res.status, 200);
@@ -238,7 +320,7 @@ describe('Mudrexx Earn Backend Test Suite', () => {
     test('POST /api/withdraw/submit handles withdrawal request', async () => {
       const res = await fetch(`${BASE_URL}/api/withdraw/submit`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(token),
         body: JSON.stringify({
           email: testEmail,
           amount: 100,
@@ -254,18 +336,16 @@ describe('Mudrexx Earn Backend Test Suite', () => {
 
   describe('Orders and Admin Directory', () => {
     const testEmail = `orderuser_${Date.now()}@mudrexx.com`;
+    let token;
     let placedOrderId;
 
     before(async () => {
-      await fetch(`${BASE_URL}/api/auth/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'Order Trader', email: testEmail, inviteCode: 'MEDRIX888' }),
-      });
+      const { data } = await registerAccount(testEmail, 'Order Trader', 'MEDRIX888');
+      token = data.token;
       // Convert demo credits to have real balance
       await fetch(`${BASE_URL}/api/wallet/convert-demo`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(token),
         body: JSON.stringify({ email: testEmail, demoCredits: 5000 }),
       });
     });
@@ -273,7 +353,7 @@ describe('Mudrexx Earn Backend Test Suite', () => {
     test('POST /api/orders/create places real order into frozen escrow', async () => {
       const res = await fetch(`${BASE_URL}/api/orders/create`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(token),
         body: JSON.stringify({
           email: testEmail,
           symbol: 'BTC',
@@ -292,14 +372,18 @@ describe('Mudrexx Earn Backend Test Suite', () => {
     });
 
     test('GET /api/orders/status fetches order status by orderId or email', async () => {
-      const res1 = await fetch(`${BASE_URL}/api/orders/status?orderId=${placedOrderId}`);
+      const res1 = await fetch(`${BASE_URL}/api/orders/status?orderId=${placedOrderId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       assert.equal(res1.status, 200);
       const data1 = await res1.json();
       assert.equal(data1.success, true);
       assert.equal(data1.order.id, placedOrderId);
       assert.equal(data1.status, 'locked');
 
-      const res2 = await fetch(`${BASE_URL}/api/orders/status?email=${encodeURIComponent(testEmail)}`);
+      const res2 = await fetch(`${BASE_URL}/api/orders/status?email=${encodeURIComponent(testEmail)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       assert.equal(res2.status, 200);
       const data2 = await res2.json();
       assert.equal(data2.success, true);
@@ -329,7 +413,7 @@ describe('Mudrexx Earn Backend Test Suite', () => {
     test('POST /api/wallet/frozen/release releases order escrow back to available balance', async () => {
       const res = await fetch(`${BASE_URL}/api/wallet/frozen/release`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(token),
         body: JSON.stringify({ email: testEmail, id: placedOrderId }),
       });
       assert.equal(res.status, 200);
@@ -341,18 +425,16 @@ describe('Mudrexx Earn Backend Test Suite', () => {
 
   describe('Order Board & Admin / Super Admin Control Commands', () => {
     const testEmail = `boarduser_${Date.now()}@mudrexx.com`;
+    let token;
     let orderId;
     let creditOrderId;
 
     before(async () => {
-      await fetch(`${BASE_URL}/api/auth/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'Board Trader', email: testEmail }),
-      });
+      const { data } = await registerAccount(testEmail, 'Board Trader', 'ADMIN777');
+      token = data.token;
       await fetch(`${BASE_URL}/api/wallet/convert-demo`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(token),
         body: JSON.stringify({ email: testEmail, demoCredits: 8000 }),
       });
     });
@@ -369,7 +451,7 @@ describe('Mudrexx Earn Backend Test Suite', () => {
     test('POST /api/orders/create records duration, payout % and entry price on the board', async () => {
       const res = await fetch(`${BASE_URL}/api/orders/create`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(token),
         body: JSON.stringify({
           email: testEmail, symbol: 'ETH', side: 'up', amount: 300,
           currency: 'INR', accountType: 'real', durationSeconds: 30, payoutPercent: 40,
@@ -388,7 +470,7 @@ describe('Mudrexx Earn Backend Test Suite', () => {
     test('POST /api/admin/orders/update changes payout %, time and currency anytime', async () => {
       const res = await fetch(`${BASE_URL}/api/admin/orders/update`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: JSON_HEADERS,
         body: JSON.stringify({ code: 'ADMIN777', orderId, payoutPercent: 50, durationSeconds: 120, currency: 'USDT' }),
       });
       const data = await res.json();
@@ -400,31 +482,35 @@ describe('Mudrexx Earn Backend Test Suite', () => {
       // switch back for the settle test
       const back = await fetch(`${BASE_URL}/api/admin/orders/update`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: JSON_HEADERS,
         body: JSON.stringify({ code: 'MUDREXX-SUPER', orderId, currency: 'INR' }),
       });
       assert.equal((await back.json()).order.currency, 'INR');
     });
 
     test('POST /api/admin/orders/control forces a WIN with payout to wallet', async () => {
-      const before = await (await fetch(`${BASE_URL}/api/wallet/summary?email=${encodeURIComponent(testEmail)}`)).json();
+      const before = await (await fetch(`${BASE_URL}/api/wallet/summary?email=${encodeURIComponent(testEmail)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })).json();
       const res = await fetch(`${BASE_URL}/api/admin/orders/control`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: JSON_HEADERS,
         body: JSON.stringify({ code: 'ADMIN777', orderId, action: 'win' }),
       });
       const data = await res.json();
       assert.equal(data.success, true);
       assert.equal(data.order.status, 'won');
       assert.equal(data.order.payout, 450); // 300 + 50%
-      const after = await (await fetch(`${BASE_URL}/api/wallet/summary?email=${encodeURIComponent(testEmail)}`)).json();
+      const after = await (await fetch(`${BASE_URL}/api/wallet/summary?email=${encodeURIComponent(testEmail)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })).json();
       assert.equal(after.summary.realBalance, before.summary.realBalance + 450);
     });
 
     test('control on a settled order is rejected with 409', async () => {
       const res = await fetch(`${BASE_URL}/api/admin/orders/control`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: JSON_HEADERS,
         body: JSON.stringify({ code: 'ADMIN777', orderId, action: 'lose' }),
       });
       assert.equal(res.status, 409);
@@ -433,7 +519,7 @@ describe('Mudrexx Earn Backend Test Suite', () => {
     test('credit orders escrow credits and a forced LOSE consumes them', async () => {
       const create = await fetch(`${BASE_URL}/api/orders/create`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(token),
         body: JSON.stringify({
           email: testEmail, symbol: 'BTC', side: 'down', amount: 500,
           currency: 'INR', accountType: 'demo', durationSeconds: 60, payoutPercent: 20,
@@ -446,7 +532,7 @@ describe('Mudrexx Earn Backend Test Suite', () => {
 
       const lose = await fetch(`${BASE_URL}/api/admin/orders/control`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: JSON_HEADERS,
         body: JSON.stringify({ code: 'MUDREXX-SUPER', orderId: creditOrderId, action: 'lose' }),
       });
       const lost = await lose.json();
@@ -455,7 +541,9 @@ describe('Mudrexx Earn Backend Test Suite', () => {
     });
 
     test('GET /api/orders/list returns the full board with wallet state', async () => {
-      const res = await fetch(`${BASE_URL}/api/orders/list?email=${encodeURIComponent(testEmail)}`);
+      const res = await fetch(`${BASE_URL}/api/orders/list?email=${encodeURIComponent(testEmail)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       const data = await res.json();
       assert.equal(data.success, true);
       assert.equal(data.orders.length, 2);
@@ -474,14 +562,14 @@ describe('Mudrexx Earn Backend Test Suite', () => {
     test('POST /api/admin/wallet/adjust is super-admin only and commands wallet state', async () => {
       const denied = await fetch(`${BASE_URL}/api/admin/wallet/adjust`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: JSON_HEADERS,
         body: JSON.stringify({ code: 'ADMIN777', email: testEmail, field: 'real', delta: 100 }),
       });
       assert.equal(denied.status, 403);
 
       const allowed = await fetch(`${BASE_URL}/api/admin/wallet/adjust`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: JSON_HEADERS,
         body: JSON.stringify({ code: 'MUDREXX-SUPER', email: testEmail, field: 'real', delta: 1000 }),
       });
       const data = await allowed.json();
@@ -490,7 +578,7 @@ describe('Mudrexx Earn Backend Test Suite', () => {
 
       const negative = await fetch(`${BASE_URL}/api/admin/wallet/adjust`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: JSON_HEADERS,
         body: JSON.stringify({ code: 'MUDREXX-SUPER', email: testEmail, field: 'real', delta: -1000000 }),
       });
       assert.equal(negative.status, 400);

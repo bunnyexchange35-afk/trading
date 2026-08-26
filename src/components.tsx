@@ -496,12 +496,13 @@ export function AuthModal() {
           </label>
           {mode === 'signup' && (
             <label>
-              Invitation / Admin code
-              <span className="label-hint">Optional</span>
+              Invitation code
+              <span className="label-hint">Assigned to you</span>
               <input
                 name="inviteCode"
-                placeholder="e.g. MUDREXX-ADMIN"
+                placeholder="Enter your assigned code"
                 autoComplete="off"
+                required
               />
             </label>
           )}

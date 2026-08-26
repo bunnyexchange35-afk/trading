@@ -1,4 +1,5 @@
 import express from 'express';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -64,7 +65,7 @@ let cacheAt = 0;
 // PERSISTENT USER STORE (JSON on disk so the backend stays authoritative
 // across restarts; runtime data lives in server/data which is gitignored)
 // ============================================================================
-const dataDir = path.join(__dirname, 'server', 'data');
+const dataDir = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(__dirname, 'server', 'data');
 const dataFile = path.join(dataDir, 'users.json');
 let saveTimer = null;
 
@@ -159,6 +160,53 @@ function resolveInvitationCode(code, newEmail) {
   }
 
   return { ok: false, error: 'That invitation code is not valid. Leave it blank if you do not have one.' };
+}
+
+// ============================================================================
+// 2.7 SESSION TOKENS & SIGN-IN ENFORCEMENT
+// ============================================================================
+// Stage 1 (sign up): registration requires a valid invitation code (an admin
+// code or an existing user's referral code).
+// Stage 2 (sign in): login issues a bearer token; every wallet / order /
+// deposit / staking call must carry `Authorization: Bearer <token>` and can
+// only touch the account that token belongs to.
+
+function issueToken(user) {
+  const token = `mx_${crypto.randomBytes(24).toString('hex')}`;
+  user.auth = { token, createdAt: new Date().toISOString() };
+  persist();
+  return token;
+}
+
+function userFromToken(req) {
+  const header = String(req.headers?.authorization || '');
+  const bearer = header.toLowerCase().startsWith('bearer ') ? header.slice(7).trim() : '';
+  const token = bearer || String(req.headers?.['x-auth-token'] || req.query?.token || '').trim();
+  if (!token) return null;
+  for (const user of userDb.values()) {
+    if (user.auth?.token && user.auth.token === token) return user;
+  }
+  return null;
+}
+
+function requireAuth(req, res, next) {
+  const user = userFromToken(req);
+  if (!user) {
+    return res.status(401).json({
+      error: 'Sign in required. Sign up with an invitation code, then sign in and send Authorization: Bearer <token>.',
+    });
+  }
+  const requested = String(req.query?.email || req.body?.email || '').trim().toLowerCase();
+  if (requested && requested !== user.email) {
+    return res.status(403).json({ error: 'This session can only access its own account.' });
+  }
+  // Default the account selector to the token owner.
+  if (!requested) {
+    if (req.query) req.query.email = user.email;
+    if (req.body) req.body.email = user.email;
+  }
+  req.authUser = user;
+  next();
 }
 
 function getOrCreateUser(email, name = '') {
@@ -330,15 +378,15 @@ app.get('/api', (_req, res) => {
       markets: 'GET /api/markets',
       klines: 'GET /api/market/klines?symbol=BTC&interval=1m',
       auth: {
-        register: 'POST /api/auth/register',
-        login: 'POST /api/auth/login',
-        me: 'GET /api/auth/me?email=...',
-        updateProfile: 'PUT /api/user/profile',
+        register: 'POST /api/auth/register {inviteCode REQUIRED}',
+        login: 'POST /api/auth/login -> bearer token',
+        me: 'GET /api/auth/me (Authorization: Bearer <token>)',
+        updateProfile: 'PUT /api/user/profile (auth)',
       },
       admin: {
         role: 'GET /api/admin/role?code=...',
         users: 'GET /api/admin/users?code=...',
-        invitedUsers: 'GET /api/admin/invited-users?code=...',
+        invitedUsers: 'GET /api/admin/invited-users?code=...&inviteCode=<optional code filter>',
         orders: 'GET /api/admin/orders?userId=...&code=...',
         allOrders: 'GET /api/admin/orders/all?code=...',
         orderControl: 'POST /api/admin/orders/control {code,orderId,action:win|lose|cancel,percent?}',
@@ -590,6 +638,15 @@ function walletStateSnapshot(user) {
 }
 
 // ============================================================================
+// 2.8 SIGN-IN ENFORCEMENT — protected API surface
+// ============================================================================
+// Everything below this mount requires a valid bearer token from
+// POST /api/auth/login (or the token returned by registration):
+//   Authorization: Bearer <token>
+// Admin control endpoints (/api/admin/*) authenticate with admin codes.
+app.use(['/api/wallet', '/api/orders', '/api/deposit', '/api/withdraw', '/api/staking', '/api/user'], requireAuth);
+
+// ============================================================================
 // 3. AUTH & PROFILE APIS
 // ============================================================================
 
@@ -598,15 +655,22 @@ app.post('/api/auth/register', (req, res) => {
   const { name, email, phone, preferredCurrency, inviteCode } = req.body || {};
   if (!email) return res.status(400).json({ error: 'Email is required' });
 
+  // Stage 1 — registration is STRICTLY by institute-assigned invitation code
+  // (ADMIN_CODES / SUPER_ADMIN_CODES). No other code is accepted, user
+  // referral codes do not grant registration, and codes are never issued by
+  // the app itself — each participant receives their code from the institute.
   const normalized = email.trim().toLowerCase();
+  const codeRole = resolveRole(inviteCode);
+  if (!String(inviteCode || '').trim() || !codeRole) {
+    return res.status(403).json({ error: 'Registration is by invitation only. Enter the code assigned to you.' });
+  }
+
   const user = getOrCreateUser(normalized, name);
   if (phone) user.phone = phone;
   if (preferredCurrency) user.preferredCurrency = preferredCurrency;
 
-  if (inviteCode) {
-    const attached = attachInvitation(user, inviteCode);
-    if (!attached.ok) return res.status(400).json({ error: attached.error });
-  }
+  user.invitedBy = String(inviteCode).trim().toUpperCase();
+  user.invitedByType = codeRole === 'super' ? 'super' : 'admin';
 
   persist();
 
@@ -614,31 +678,55 @@ app.post('/api/auth/register', (req, res) => {
     success: true,
     message: 'User registered successfully with ₹0.00 initial balance',
     user,
-    token: `mudrexx_jwt_${Buffer.from(normalized).toString('base64')}`,
+    token: issueToken(user),
   });
 });
 
-// Admin / invitation panel: list every account that used an admin code.
+// Admin / invitation panel: list every account that registered through an
+// invitation code. Optional ?inviteCode=<code> filters to one specific code
+// (an admin code or a user's referral code).
 app.get('/api/admin/invited-users', (req, res) => {
   const code = normalizeInviteCode(req.query.code);
   if (!code) return res.status(400).json({ error: 'Admin code is required' });
-  if (!adminCodes.includes(code)) return res.status(403).json({ error: 'Invalid admin code' });
+  if (resolveRole(code) !== 'admin' && !adminCodes.includes(code)) {
+    return res.status(403).json({ error: 'Invalid admin code' });
+  }
 
-  const users = [...userDb.values()]
-    .filter((user) => user.invitedBy === code)
-    .map((user) => ({
-      name: user.name,
-      email: user.email,
-      phone: user.phone,
-      registeredAt: user.registeredAt,
-      invitedBy: user.invitedBy,
-      invitedByType: user.invitedByType,
-      realBalance: Number(user.wallet?.realBalance || 0),
-      demoBalance: Number(user.wallet?.demoBalance || 0),
-      lastActivity: user.wallet?.transactions?.[0]?.time || '—',
-    }));
+  const inviteFilter = String(req.query.inviteCode || '').trim();
+  const inviteFilterNormalized = normalizeInviteCode(inviteFilter);
 
-  res.json({ success: true, code, users });
+  const all = [...userDb.values()].filter((user) => user.invitedBy);
+  const users = (inviteFilterNormalized
+    ? all.filter((user) => normalizeInviteCode(user.invitedBy) === inviteFilterNormalized)
+    : all
+  ).map((user) => ({
+    name: user.name,
+    email: user.email,
+    phone: user.phone,
+    registeredAt: user.registeredAt,
+    invitedBy: user.invitedBy,
+    invitedByType: user.invitedByType,
+    realBalance: Number(user.wallet?.realBalance || 0),
+    realUsdtBalance: Number(user.wallet?.realUsdtBalance || 0),
+    frozenBalance: Number(user.wallet?.frozenBalance || 0),
+    demoBalance: Number(user.wallet?.demoBalance || 0),
+    openOrders: (user.orders || []).filter((entry) => entry.status === 'open').length,
+    lastActivity: user.wallet?.transactions?.[0]?.time || '—',
+  }));
+
+  res.json({
+    success: true,
+    code,
+    inviteCode: inviteFilter || undefined,
+    total: users.length,
+    users,
+    summary: {
+      invitedAccounts: all.length,
+      byAdminCode: all.filter((user) => user.invitedByType === 'admin').length,
+      byReferral: all.filter((user) => user.invitedByType === 'user').length,
+      combinedRealBalance: users.reduce((sum, user) => sum + user.realBalance, 0),
+    },
+  });
 });
 
 // Read-only admin user directory. The legacy invited-users endpoint above is
@@ -862,14 +950,26 @@ app.post('/api/auth/login', (req, res) => {
     success: true,
     message: 'Welcome back',
     user,
-    token: `mudrexx_jwt_${Buffer.from(normalized).toString('base64')}`,
+    token: issueToken(user),
   });
 });
 
-// Current User Profile
+// Current User Profile — token-based. Without a token this answers
+// "anonymous" (nobody is signed in); with a token it returns that account.
 app.get('/api/auth/me', (req, res) => {
-  const email = String(req.query.email || req.headers['x-user-email'] || 'demo@mudrexx.com');
-  const user = getOrCreateUser(email);
+  const supplied =
+    String(req.headers?.authorization || '') ||
+    String(req.headers?.['x-auth-token'] || '') ||
+    String(req.query?.token || '');
+  const user = userFromToken(req);
+  const requested = String(req.query.email || req.headers['x-user-email'] || '').trim().toLowerCase();
+  if (!user) {
+    if (supplied.trim()) return res.status(401).json({ error: 'Invalid or expired session token. Sign in again.' });
+    return res.json({ success: true, user: null, anonymous: true });
+  }
+  if (requested && requested !== user.email) {
+    return res.status(403).json({ error: 'This session can only access its own account.' });
+  }
   res.json({ success: true, user });
 });
 

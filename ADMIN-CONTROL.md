@@ -1,6 +1,12 @@
 # ADMIN & SUPER ADMIN CONTROL — Backend Command Summary
 
+> Full machine-readable API definition (both auth conditions + every endpoint, worker URLs): see [`api.json`](api.json).
+
 Paste-ready reference for the training programme backend. All control is **backend-side** — no admin pages; you drive everything with these HTTP commands (curl, Postman, or your own tooling). The site itself reads as a normal live trading desk: real Coinbase market graphs, real currency pairs, no "demo/training" wording.
+
+**Both conditions attached:**
+1. **Registration is invitation-only** — the only valid codes are the institute-assigned `ADMIN_CODES` / `SUPER_ADMIN_CODES`; user referral codes are rejected, no code is ever issued by the app.
+2. **Sign-in required** — sign up / sign in return a bearer token (`Authorization: Bearer <token>`); every wallet/order/deposit/staking call requires it and can only touch its own account.
 
 - **Backend code**: `server.mjs` → "ORDER ENGINE" + "ADMIN & SUPER ADMIN ORDER CONTROL ROOM" sections
 - **Works through Cloudflare Workers**: every `/api/*` command below is proxied by the `mudrex-earn` worker to `BACKEND_ORIGIN` — or call the backend directly on its own URL.
@@ -22,7 +28,7 @@ ADMIN_CODES="ADMIN1,ADMIN2" SUPER_ADMIN_CODES="BOSS1" node server.mjs
 ## Commands
 
 ```bash
-BASE="http://localhost:8080"          # your backend (or the worker URL — /api proxies through)
+BASE="https://mudrex-earn.<your-subdomain>.workers.dev"   # the deployed worker (proxies /api to your backend)
 CODE="MUDREXX-SUPER"                  # admin or super admin code
 ```
 
