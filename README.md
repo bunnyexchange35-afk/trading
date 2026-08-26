@@ -121,6 +121,20 @@ Notes:
 - You can also set `BACKEND_ORIGIN` or service bindings in the Cloudflare dashboard under
   **Settings -> Variables and Secrets** / **Settings -> Bindings**.
 
+## Deploy Frontend to Cloudflare Pages
+
+The same Cloudflare runtime is also available as a **Pages project**: `wrangler.toml` points `pages_build_output_dir` at `dist`, and the Pages Functions in `functions/` delegate to the exact request handler used by `trading-worker/`, so Pages and the Worker deployment behave identically:
+
+- `functions/api/[[path]].ts` — serves `/api/*` (native Coinbase market endpoints plus backend proxying)
+- `functions/[[path]].ts` — handles `/a/*`, `/s/*`, `/verify` backend proxy paths and provides the SPA fallback (deep links like `/market`)
+
+```bash
+npm run cf:dev       # build + serve locally with the Pages runtime (workerd) on :8788
+npm run cf:deploy    # build + deploy to the mudrexx-earn Pages project
+```
+
+Attach a custom domain from the dashboard: **Workers & Pages → mudrexx-earn → Custom domains** (the default `https://mudrexx-earn.pages.dev` URL works without any route configuration). `BACKEND_ORIGIN` and other bindings are configured under the Pages project's **Settings → Environment variables / Bindings** — the same variables documented for the Worker below.
+
 ## Environment Variables & Bindings
 
 | Variable / Binding | Type | Description |
