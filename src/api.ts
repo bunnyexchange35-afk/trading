@@ -885,3 +885,349 @@ export async function stakeInVault(data: {
 }): Promise<StakeResponse> {
   return post<StakeResponse>('/api/staking/stake', data);
 }
+// src/api.ts
+
+const API_URL =
+  import.meta.env.VITE_API_URL ||
+  "https://mudrexxback.meeruchurail.workers.dev";
+
+type RequestOptions = {
+  method?: "GET" | "POST" | "PUT" | "DELETE";
+  body?: unknown;
+  email?: string;
+  token?: string;
+};
+
+async function request<T>(
+  endpoint: string,
+  options: RequestOptions = {}
+): Promise<T> {
+  const {
+    method = "GET",
+    body,
+    email,
+    token,
+  } = options;
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+
+  if (email) {
+    headers["X-User-Email"] = email;
+  }
+
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${API_URL}${endpoint}`, {
+    method,
+    headers,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+
+  const text = await response.text();
+
+  let data: any;
+
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = {
+      success: false,
+      message: text || "Invalid server response",
+    };
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      data?.message ||
+      data?.error ||
+      `Request failed with status ${response.status}`
+    );
+  }
+
+  return data as T;
+}
+
+/* =========================================================
+   SYSTEM / MARKET
+========================================================= */
+
+export const api = {
+  health: () =>
+    request("/api/health"),
+
+  markets: () =>
+    request("/api/markets"),
+
+  klines: (
+    symbol: string,
+    interval: "1m" | "5m" | "15m" | "1h"
+  ) =>
+    request(
+      `/api/market/klines?symbol=${encodeURIComponent(
+        symbol
+      )}&interval=${encodeURIComponent(interval)}`
+    ),
+
+  /* =======================================================
+     AUTH
+  ======================================================= */
+
+  register: (data: {
+    name: string;
+    email: string;
+    phone: string;
+    preferredCurrency: string;
+  }) =>
+    request("/api/auth/register", {
+      method: "POST",
+      body: data,
+    }),
+
+  login: (email: string) =>
+    request("/api/auth/login", {
+      method: "POST",
+      body: {
+        email,
+      },
+    }),
+
+  me: (email: string, token?: string) =>
+    request(
+      `/api/auth/me?email=${encodeURIComponent(email)}`,
+      {
+        email,
+        token,
+      }
+    ),
+
+  /* =======================================================
+     WALLET
+  ======================================================= */
+
+  walletSummary: (email: string, token?: string) =>
+    request(
+      `/api/wallet/summary?email=${encodeURIComponent(email)}`,
+      {
+        email,
+        token,
+      }
+    ),
+
+  walletTransactions: (email: string, token?: string) =>
+    request(
+      `/api/wallet/transactions?email=${encodeURIComponent(email)}`,
+      {
+        email,
+        token,
+      }
+    ),
+
+  walletFrozen: (email: string, token?: string) =>
+    request(
+      `/api/wallet/frozen?email=${encodeURIComponent(email)}`,
+      {
+        email,
+        token,
+      }
+    ),
+
+  /* =======================================================
+     FROZEN FUNDS
+  ======================================================= */
+
+  releaseFrozen: (
+    email: string,
+    id: string,
+    token?: string
+  ) =>
+    request("/api/wallet/frozen/release", {
+      method: "POST",
+      email,
+      token,
+      body: {
+        email,
+        id,
+      },
+    }),
+
+  approveDeposit: (
+    email: string,
+    id: string,
+    token?: string
+  ) =>
+    request("/api/wallet/deposit/approve", {
+      method: "POST",
+      email,
+      token,
+      body: {
+        email,
+        id,
+      },
+    }),
+
+  /* =======================================================
+     DEMO → REAL
+  ======================================================= */
+
+  convertDemo: (
+    email: string,
+    demoCredits: number,
+    token?: string
+  ) =>
+    request("/api/wallet/convert-demo", {
+      method: "POST",
+      email,
+      token,
+      body: {
+        email,
+        demoCredits,
+      },
+    }),
+
+  claimDemo: (
+    email: string,
+    amount = 5000,
+    token?: string
+  ) =>
+    request("/api/wallet/claim-demo", {
+      method: "POST",
+      email,
+      token,
+      body: {
+        email,
+        amount,
+      },
+    }),
+
+  linkDemo: (
+    email: string,
+    linked: boolean,
+    token?: string
+  ) =>
+    request("/api/wallet/link-demo", {
+      method: "POST",
+      email,
+      token,
+      body: {
+        email,
+        linked,
+      },
+    }),
+
+  adjustDemo: (
+    email: string,
+    delta: number,
+    token?: string
+  ) =>
+    request("/api/wallet/demo/adjust", {
+      method: "POST",
+      email,
+      token,
+      body: {
+        email,
+        delta,
+      },
+    }),
+
+  /* =======================================================
+     DEPOSITS
+  ======================================================= */
+
+  submitDeposit: (
+    email: string,
+    amount: number,
+    rail: "inr" | "usdt",
+    method: string,
+    reference: string,
+    token?: string
+  ) =>
+    request("/api/deposit/submit", {
+      method: "POST",
+      email,
+      token,
+      body: {
+        email,
+        amount,
+        rail,
+        method,
+        reference,
+      },
+    }),
+
+  /* =======================================================
+     WITHDRAWALS
+  ======================================================= */
+
+  submitWithdrawal: (
+    email: string,
+    amount: number,
+    destination: string,
+    token?: string
+  ) =>
+    request("/api/withdraw/submit", {
+      method: "POST",
+      email,
+      token,
+      body: {
+        email,
+        amount,
+        destination,
+      },
+    }),
+
+  /* =======================================================
+     ORDERS
+  ======================================================= */
+
+  createOrder: (
+    email: string,
+    symbol: string,
+    side: "up" | "down",
+    amount: number,
+    currency: string,
+    accountType: "real" | "demo",
+    token?: string
+  ) =>
+    request("/api/orders/create", {
+      method: "POST",
+      email,
+      token,
+      body: {
+        email,
+        symbol,
+        side,
+        amount,
+        currency,
+        accountType,
+      },
+    }),
+
+  /* =======================================================
+     STAKING
+  ======================================================= */
+
+  stake: (
+    email: string,
+    asset: string,
+    amount: number,
+    apy: number,
+    token?: string
+  ) =>
+    request("/api/staking/stake", {
+      method: "POST",
+      email,
+      token,
+      body: {
+        email,
+        asset,
+        amount,
+        apy,
+      },
+    }),
+};
+
+export default api;
