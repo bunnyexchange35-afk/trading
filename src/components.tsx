@@ -68,7 +68,7 @@ export function CoinIcon({ asset, size = 'md' }: { asset: Asset; size?: 'sm' | '
 
 const links = [
   ['/', 'Home'],
-  ['/market', 'Market'],
+  ['/trading', 'Trading'],
   ['/instant-order', 'Instant Order'],
   ['/deposit', 'Deposit'],
 ] as const;
