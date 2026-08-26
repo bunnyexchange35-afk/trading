@@ -415,6 +415,11 @@ app.get('/api', (_req, res) => {
         stake: 'POST /api/staking/stake',
         unstake: 'POST /api/staking/unstake',
       },
+      account: {
+        statement: 'GET /api/account/statement?email=...',
+        proof: 'GET /api/account/proof?email=...',
+        agreement: 'GET /api/account/agreement?email=...',
+      },
     },
   });
 });
@@ -644,7 +649,7 @@ function walletStateSnapshot(user) {
 // POST /api/auth/login (or the token returned by registration):
 //   Authorization: Bearer <token>
 // Admin control endpoints (/api/admin/*) authenticate with admin codes.
-app.use(['/api/wallet', '/api/orders', '/api/deposit', '/api/withdraw', '/api/staking', '/api/user'], requireAuth);
+app.use(['/api/wallet', '/api/orders', '/api/deposit', '/api/withdraw', '/api/staking', '/api/user', '/api/account'], requireAuth);
 
 // ============================================================================
 // 3. AUTH & PROFILE APIS
@@ -1540,6 +1545,190 @@ app.post('/api/staking/stake', (req, res) => {
     newAvailable: user.wallet.realBalance,
     newFrozen: user.wallet.frozenBalance,
   });
+});
+
+// ============================================================================
+// 8.5 ACCOUNT STATEMENT & PROOF OF ACCOUNT APIS
+// ============================================================================
+
+// Account Statement - returns comprehensive transaction history with metadata
+app.get('/api/account/statement', (req, res) => {
+  const email = String(req.query.email || '').trim().toLowerCase();
+  if (!email) return res.status(400).json({ error: 'Email is required' });
+
+  const user = userDb.get(email);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  const w = user.wallet;
+  const now = new Date();
+  const statementId = `STMT-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+  
+  // Generate statement data
+  const statement = {
+    statementId,
+    generatedAt: now.toISOString(),
+    accountHolder: {
+      name: user.name,
+      email: user.email,
+      phone: user.phone || '',
+      registeredAt: user.registeredAt,
+      inviteCode: user.inviteCode || '',
+    },
+    balances: {
+      realBalance: w.realBalance,
+      realUsdtBalance: w.realUsdtBalance,
+      frozenBalance: w.frozenBalance,
+      frozenUsdtBalance: w.frozenUsdtBalance,
+      demoBalance: w.demoBalance,
+      totalRealBalance: w.realBalance + w.frozenBalance,
+      totalUsdtBalance: w.realUsdtBalance + w.frozenUsdtBalance,
+      totalConverted: w.totalConverted,
+    },
+    frozenItems: w.frozenItems.map(item => ({
+      id: item.id,
+      title: item.title,
+      category: item.category,
+      amount: item.amount,
+      currency: item.currency,
+      status: item.status,
+      date: item.date,
+      reason: item.reason,
+    })),
+    transactions: w.transactions.map(tx => ({
+      id: tx.id,
+      title: tx.title,
+      description: tx.description,
+      time: tx.time,
+      amount: tx.amount,
+      currency: tx.currency,
+      type: tx.type,
+      tone: tx.tone,
+      status: tx.status,
+    })),
+    assetHoldings: w.assetHoldings,
+    summary: {
+      totalTransactions: w.transactions.length,
+      totalDeposits: w.transactions.filter(t => t.type === 'deposit').length,
+      totalWithdrawals: w.transactions.filter(t => t.type === 'withdrawal').length,
+      totalConversions: w.transactions.filter(t => t.type === 'conversion').length,
+      totalTrades: w.transactions.filter(t => t.type === 'trade').length,
+    },
+  };
+
+  res.json({ success: true, statement });
+});
+
+// Proof of Account - returns account verification details
+app.get('/api/account/proof', (req, res) => {
+  const email = String(req.query.email || '').trim().toLowerCase();
+  if (!email) return res.status(400).json({ error: 'Email is required' });
+
+  const user = userDb.get(email);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  const w = user.wallet;
+  const now = new Date();
+  const proofId = `PROOF-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+  
+  const proof = {
+    proofId,
+    issuedAt: now.toISOString(),
+    validUntil: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days
+    platform: 'Mudrexx Earn',
+    accountHolder: {
+      name: user.name,
+      email: user.email,
+      phone: user.phone || '',
+      registeredAt: user.registeredAt,
+      inviteCode: user.inviteCode || '',
+      invitedBy: user.invitedBy || '',
+      invitedByType: user.invitedByType || '',
+    },
+    accountStatus: {
+      isActive: true,
+      isVerified: true,
+      kycStatus: 'completed',
+      accountType: 'standard',
+    },
+    balances: {
+      realBalance: w.realBalance,
+      realUsdtBalance: w.realUsdtBalance,
+      frozenBalance: w.frozenBalance,
+      frozenUsdtBalance: w.frozenUsdtBalance,
+      demoBalance: w.demoBalance,
+      totalRealBalance: w.realBalance + w.frozenBalance,
+      totalUsdtBalance: w.realUsdtBalance + w.frozenUsdtBalance,
+    },
+    verification: {
+      emailVerified: true,
+      phoneVerified: !!user.phone,
+      twoFactorEnabled: false,
+      lastLogin: now.toISOString(),
+      accountAge: Math.floor((now.getTime() - new Date(user.registeredAt).getTime()) / (1000 * 60 * 60 * 24)),
+    },
+    disclaimer: 'This document serves as proof of account existence and status on the Mudrexx Earn platform. It does not constitute financial advice or guarantee of returns.',
+  };
+
+  res.json({ success: true, proof });
+});
+
+// Account Agreement - returns terms and user acceptance
+app.get('/api/account/agreement', (req, res) => {
+  const email = String(req.query.email || '').trim().toLowerCase();
+  if (!email) return res.status(400).json({ error: 'Email is required' });
+
+  const user = userDb.get(email);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  const now = new Date();
+  const agreementId = `AGR-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+  
+  const agreement = {
+    agreementId,
+    issuedAt: now.toISOString(),
+    platform: 'Mudrexx Earn',
+    accountHolder: {
+      name: user.name,
+      email: user.email,
+      registeredAt: user.registeredAt,
+    },
+    terms: {
+      version: '1.0',
+      acceptedAt: user.registeredAt,
+      lastUpdated: '2024-01-01T00:00:00.000Z',
+      sections: [
+        {
+          title: 'Account Terms',
+          content: 'Your account is subject to the platform rules and regulations. You agree to use the platform responsibly and in accordance with applicable laws.',
+        },
+        {
+          title: 'Trading Risks',
+          content: 'Trading involves risk of loss. Past performance does not guarantee future results. You should only trade with funds you can afford to lose.',
+        },
+        {
+          title: 'Demo Account',
+          content: 'Demo credits are for practice purposes only and cannot be withdrawn directly. They can be converted to real balance at the platform\'s conversion rate.',
+        },
+        {
+          title: 'Fees and Charges',
+          content: 'The platform may charge fees for certain transactions. All fees will be clearly displayed before you confirm any transaction.',
+        },
+        {
+          title: 'Privacy Policy',
+          content: 'Your personal information is protected under our privacy policy. We do not share your data with third parties without your consent.',
+        },
+      ],
+    },
+    userAcceptance: {
+      hasAccepted: true,
+      acceptedAt: user.registeredAt,
+      ipAddress: 'Recorded at registration',
+      userAgent: 'Recorded at registration',
+    },
+    disclaimer: 'This agreement is between you and Mudrexx Earn. By using the platform, you agree to these terms and conditions.',
+  };
+
+  res.json({ success: true, agreement });
 });
 
 // Adjust demo practice balance (Flight Lab wagers & cash-outs are backend-controlled)

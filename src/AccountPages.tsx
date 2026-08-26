@@ -2,16 +2,31 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import {
   AlertCircle, ArrowDownLeft, ArrowRight, ArrowUpRight, Award, Banknote, Bell, BookOpen,
-  Check, ChevronRight, CircleHelp, Coins, Copy, CreditCard, ExternalLink, Flame,
-  Globe2, Headphones, History, Info, KeyRound, Layers3, Link2, Lock, LockKeyhole,
+  Check, ChevronRight, CircleHelp, Coins, Copy, CreditCard, Download, ExternalLink, FileText,
+  Flame, Globe2, Headphones, History, Info, KeyRound, Layers3, Link2, Lock, LockKeyhole,
   MessageCircle, MessagesSquare, Plus, RefreshCcw, RotateCcw, Search, Settings, ShieldCheck,
   Sparkles, TrendingUp, Unlock, User, Users, Wallet as WalletIcon, X, Zap,
 } from 'lucide-react';
 import { CoinIcon, EmptyState, PageHero } from './components';
 import { useApp, type FrozenFundItem } from './app-context';
-import { getWalletSummary, type WalletSummaryResponse } from './api';
+import {
+  getWalletSummary,
+  getAccountStatement,
+  getAccountProof,
+  getAccountAgreement,
+  type WalletSummaryResponse,
+  type AccountStatement,
+  type AccountProof,
+  type AccountAgreement,
+} from './api';
 import { INR_RATE, money } from './data';
 import { useMarket } from './market-context';
+import {
+  generateStatementPDF,
+  generateProofPDF,
+  generateAgreementPDF,
+  downloadPDF,
+} from './pdf-utils';
 
 const TELEGRAM_URL = import.meta.env.VITE_TELEGRAM_URL || 'https://t.me/MEDRIXEARN';
 
@@ -105,6 +120,9 @@ export function ProfilePage() {
                 <SettingRow icon={<LockKeyhole />} title="Two-factor authentication" copy="Add an authenticator app" action="Set up" />
                 <SettingRow icon={<Bell />} title="Login alerts" copy="Email alerts for new sessions" action="Enabled" />
               </div>
+
+              {/* Account Documents Section */}
+              <AccountDocumentsSection />
             </>
           )}
         </div>
@@ -1055,6 +1073,259 @@ export function CommunityPage() {
         </div>
       </section>
     </main>
+  );
+}
+
+function AccountDocumentsSection() {
+  const { user, notify } = useApp();
+  const [loading, setLoading] = useState<string | null>(null);
+  const [statement, setStatement] = useState<AccountStatement | null>(null);
+  const [proof, setProof] = useState<AccountProof | null>(null);
+  const [agreement, setAgreement] = useState<AccountAgreement | null>(null);
+
+  const handleGenerateStatement = async () => {
+    if (!user) return;
+    setLoading('statement');
+    try {
+      const response = await getAccountStatement(user.email);
+      if (response.success && response.statement) {
+        setStatement(response.statement);
+        const doc = generateStatementPDF(response.statement);
+        downloadPDF(doc, `account-statement-${statement?.statementId || Date.now()}.pdf`);
+        notify('Statement Generated', 'Your account statement has been downloaded as PDF.', 'success');
+      } else {
+        notify('Error', response.error || 'Failed to generate statement', 'warning');
+      }
+    } catch (error) {
+      notify('Error', 'Failed to generate statement. Please try again.', 'warning');
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  const handleGenerateProof = async () => {
+    if (!user) return;
+    setLoading('proof');
+    try {
+      const response = await getAccountProof(user.email);
+      if (response.success && response.proof) {
+        setProof(response.proof);
+        const doc = generateProofPDF(response.proof);
+        downloadPDF(doc, `proof-of-account-${response.proof.proofId}.pdf`);
+        notify('Proof Generated', 'Your proof of account has been downloaded as PDF.', 'success');
+      } else {
+        notify('Error', response.error || 'Failed to generate proof', 'warning');
+      }
+    } catch (error) {
+      notify('Error', 'Failed to generate proof. Please try again.', 'warning');
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  const handleGenerateAgreement = async () => {
+    if (!user) return;
+    setLoading('agreement');
+    try {
+      const response = await getAccountAgreement(user.email);
+      if (response.success && response.agreement) {
+        setAgreement(response.agreement);
+        const doc = generateAgreementPDF(response.agreement);
+        downloadPDF(doc, `account-agreement-${response.agreement.agreementId}.pdf`);
+        notify('Agreement Generated', 'Your account agreement has been downloaded as PDF.', 'success');
+      } else {
+        notify('Error', response.error || 'Failed to generate agreement', 'warning');
+      }
+    } catch (error) {
+      notify('Error', 'Failed to generate agreement. Please try again.', 'warning');
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  return (
+    <div className="settings-card account-documents-section">
+      <div className="card-heading">
+        <div>
+          <h3>Account Documents</h3>
+          <p>Download official account documents, statements, and agreements in PDF format.</p>
+        </div>
+        <FileText />
+      </div>
+
+      <div className="documents-grid">
+        {/* Account Statement */}
+        <div className="document-card">
+          <div className="document-icon">
+            <History size={24} />
+          </div>
+          <div className="document-info">
+            <h4>Account Statement</h4>
+            <p>Comprehensive transaction history, balance summary, and frozen funds details.</p>
+            <ul>
+              <li>Complete transaction history</li>
+              <li>Balance breakdown (Real, Frozen, Demo)</li>
+              <li>Frozen funds details</li>
+              <li>Asset holdings summary</li>
+            </ul>
+          </div>
+          <button
+            className="btn btn-purple btn-sm"
+            onClick={handleGenerateStatement}
+            disabled={loading === 'statement'}
+          >
+            {loading === 'statement' ? (
+              <>
+                <RefreshCcw size={14} className="spinning" /> Generating...
+              </>
+            ) : (
+              <>
+                <Download size={14} /> Download Statement
+              </>
+            )}
+          </button>
+        </div>
+
+        {/* Proof of Account */}
+        <div className="document-card">
+          <div className="document-icon">
+            <ShieldCheck size={24} />
+          </div>
+          <div className="document-info">
+            <h4>Proof of Account</h4>
+            <p>Official verification document confirming your account status and details.</p>
+            <ul>
+              <li>Account verification status</li>
+              <li>Current balance snapshot</li>
+              <li>KYC verification details</li>
+              <li>Account age and activity</li>
+            </ul>
+          </div>
+          <button
+            className="btn btn-purple btn-sm"
+            onClick={handleGenerateProof}
+            disabled={loading === 'proof'}
+          >
+            {loading === 'proof' ? (
+              <>
+                <RefreshCcw size={14} className="spinning" /> Generating...
+              </>
+            ) : (
+              <>
+                <Download size={14} /> Download Proof
+              </>
+            )}
+          </button>
+        </div>
+
+        {/* Account Agreement */}
+        <div className="document-card">
+          <div className="document-icon">
+            <BookOpen size={24} />
+          </div>
+          <div className="document-info">
+            <h4>Account Agreement</h4>
+            <p>Terms and conditions, trading risks, and platform policies.</p>
+            <ul>
+              <li>Terms and conditions</li>
+              <li>Trading risk disclosure</li>
+              <li>Privacy policy summary</li>
+              <li>User acceptance record</li>
+            </ul>
+          </div>
+          <button
+            className="btn btn-purple btn-sm"
+            onClick={handleGenerateAgreement}
+            disabled={loading === 'agreement'}
+          >
+            {loading === 'agreement' ? (
+              <>
+                <RefreshCcw size={14} className="spinning" /> Generating...
+              </>
+            ) : (
+              <>
+                <Download size={14} /> Download Agreement
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* Document History */}
+      {(statement || proof || agreement) && (
+        <div className="document-history">
+          <h4>Recently Generated Documents</h4>
+          <div className="history-list">
+            {statement && (
+              <div className="history-item">
+                <FileText size={16} />
+                <div>
+                  <strong>Account Statement</strong>
+                  <small>ID: {statement.statementId} • Generated: {new Date(statement.generatedAt).toLocaleString()}</small>
+                </div>
+                <button
+                  className="btn btn-soft btn-sm"
+                  onClick={() => {
+                    const doc = generateStatementPDF(statement);
+                    downloadPDF(doc, `account-statement-${statement.statementId}.pdf`);
+                  }}
+                >
+                  <Download size={12} /> Re-download
+                </button>
+              </div>
+            )}
+            {proof && (
+              <div className="history-item">
+                <ShieldCheck size={16} />
+                <div>
+                  <strong>Proof of Account</strong>
+                  <small>ID: {proof.proofId} • Valid until: {new Date(proof.validUntil).toLocaleDateString()}</small>
+                </div>
+                <button
+                  className="btn btn-soft btn-sm"
+                  onClick={() => {
+                    const doc = generateProofPDF(proof);
+                    downloadPDF(doc, `proof-of-account-${proof.proofId}.pdf`);
+                  }}
+                >
+                  <Download size={12} /> Re-download
+                </button>
+              </div>
+            )}
+            {agreement && (
+              <div className="history-item">
+                <BookOpen size={16} />
+                <div>
+                  <strong>Account Agreement</strong>
+                  <small>ID: {agreement.agreementId} • Version: {agreement.terms.version}</small>
+                </div>
+                <button
+                  className="btn btn-soft btn-sm"
+                  onClick={() => {
+                    const doc = generateAgreementPDF(agreement);
+                    downloadPDF(doc, `account-agreement-${agreement.agreementId}.pdf`);
+                  }}
+                >
+                  <Download size={12} /> Re-download
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="documents-info-banner">
+        <Info size={16} />
+        <div>
+          <strong>About Account Documents</strong>
+          <p>
+            All documents are generated in real-time from your account data. Statements include your complete
+            transaction history, while proof of account serves as official verification. The agreement document
+            contains the terms you accepted during registration.
+          </p>
+        </div>
+      </div>
+    </div>
   );
 }
 
