@@ -110,6 +110,24 @@ const adminCodes = (process.env.ADMIN_CODES || 'MUDREXX-ADMIN,ADMIN-2024,ADMIN77
   .map((value) => String(value || '').trim().toLowerCase())
   .filter(Boolean);
 
+// Super admin codes (comma separated, SUPER_ADMIN_CODES env). Super admins can
+// do everything admins can — control every order (win / lose / cancel, change
+// currency, time, payout %, anytime) — plus directly command wallet state
+// (deposit / credit / total / frozen balances).
+const superAdminCodes = (process.env.SUPER_ADMIN_CODES || 'MUDREXX-SUPER,SUPER-2024')
+  .split(',')
+  .map((value) => String(value || '').trim().toLowerCase())
+  .filter(Boolean);
+
+// Resolve an access code to its role: 'super' | 'admin' | null.
+function resolveRole(code) {
+  const normalized = normalizeInviteCode(code);
+  if (!normalized) return null;
+  if (superAdminCodes.includes(normalized)) return 'super';
+  if (adminCodes.includes(normalized)) return 'admin';
+  return null;
+}
+
 const inviteChars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 function generateInviteCode() {
@@ -318,9 +336,14 @@ app.get('/api', (_req, res) => {
         updateProfile: 'PUT /api/user/profile',
       },
       admin: {
+        role: 'GET /api/admin/role?code=...',
         users: 'GET /api/admin/users?code=...',
         invitedUsers: 'GET /api/admin/invited-users?code=...',
         orders: 'GET /api/admin/orders?userId=...&code=...',
+        allOrders: 'GET /api/admin/orders/all?code=...',
+        orderControl: 'POST /api/admin/orders/control {code,orderId,action:win|lose|cancel,percent?}',
+        orderUpdate: 'POST /api/admin/orders/update {code,orderId,currency?,durationSeconds?,payoutPercent?}',
+        walletAdjust: 'POST /api/admin/wallet/adjust {code,email,field:real|realUsdt|frozen|frozenUsdt|demo,delta} [super admin only]',
       },
       wallet: {
         summary: 'GET /api/wallet/summary?email=...',
@@ -338,6 +361,7 @@ app.get('/api', (_req, res) => {
       orders: {
         create: 'POST /api/orders/create',
         status: 'GET /api/orders/status?orderId=...&email=...',
+        list: 'GET /api/orders/list?email=...',
       },
       staking: {
         stake: 'POST /api/staking/stake',
@@ -429,6 +453,141 @@ app.get('/api/market/klines', async (req, res) => {
     res.json({ data, source: 'fallback' });
   }
 });
+
+// ============================================================================
+// 2.5 ORDER ENGINE — every order lands on the Instant Order page
+// ============================================================================
+// Order record: { id, symbol, side, amount, currency, accountType, status,
+//   payoutPercent, durationSeconds, createdAt, expiresAt, entryPrice,
+//   exitPrice?, payout?, profit?, settledAt?, settledBy? }
+// status: open | won | lost | cancelled
+
+function currentPrice(symbol) {
+  if (marketCache && Date.now() - cacheAt < 30000) {
+    const row = marketCache.find((item) => item.symbol === symbol);
+    if (row) return Number(row.price);
+  }
+  return Number(seed[symbol]?.[0] || 1);
+}
+
+function ensureOrdersArray(user) {
+  if (!Array.isArray(user.orders)) user.orders = [];
+}
+
+function findOrderById(orderId) {
+  for (const user of userDb.values()) {
+    const order = (user.orders || []).find((entry) => entry.id === orderId);
+    if (order) return { user, order };
+  }
+  return null;
+}
+
+// Settle an open order: 'win' (stake + payout% profit returned), 'lose'
+// (stake consumed), 'cancel' (stake refunded). percentOverride lets an
+// admin decide the payout % at settle time.
+function settleOrder(user, order, outcome, percentOverride, settledBy) {
+  if (order.status !== 'open') return false;
+
+  const pct = Math.min(500, Math.max(0, Number(percentOverride ?? order.payoutPercent ?? 5)));
+  const currency = order.currency === 'USDT' ? 'USDT' : 'INR';
+  const sign = currency === 'INR' ? '₹' : '₮';
+  const isReal = order.accountType === 'real';
+  const profit = Number(((order.amount * pct) / 100).toFixed(2));
+  order.exitPrice = currentPrice(order.symbol);
+  order.settledAt = new Date().toISOString();
+  order.settledBy = settledBy || 'market';
+  order.settledPercent = pct;
+
+  if (outcome === 'cancel') {
+    order.status = 'cancelled';
+    order.payout = order.amount;
+    if (isReal) {
+      if (currency === 'INR') {
+        user.wallet.frozenBalance = Math.max(0, user.wallet.frozenBalance - order.amount);
+        user.wallet.realBalance += order.amount;
+      } else {
+        user.wallet.frozenUsdtBalance = Math.max(0, user.wallet.frozenUsdtBalance - order.amount);
+        user.wallet.realUsdtBalance += order.amount;
+      }
+      user.wallet.frozenItems = (user.wallet.frozenItems || []).filter((entry) => entry.id !== order.id);
+    } else {
+      user.wallet.demoBalance += order.amount;
+    }
+    user.wallet.transactions.unshift({
+      id: `tx-${order.id}-cancel`, title: 'Order Cancelled',
+      description: `${order.symbol} ${order.side.toUpperCase()} · ${sign}${order.amount.toLocaleString()} refunded to available balance`,
+      time: 'Just now', amount: order.amount, currency, type: 'trade', tone: 'neutral', status: 'completed',
+    });
+    persist();
+    return true;
+  }
+
+  const won = outcome === 'win';
+  order.status = won ? 'won' : 'lost';
+  order.profit = won ? profit : 0;
+
+  if (isReal) {
+    if (currency === 'INR') user.wallet.frozenBalance = Math.max(0, user.wallet.frozenBalance - order.amount);
+    else user.wallet.frozenUsdtBalance = Math.max(0, user.wallet.frozenUsdtBalance - order.amount);
+    user.wallet.frozenItems = (user.wallet.frozenItems || []).filter((entry) => entry.id !== order.id);
+    if (won) {
+      order.payout = Number((order.amount + profit).toFixed(2));
+      if (currency === 'INR') user.wallet.realBalance += order.payout;
+      else user.wallet.realUsdtBalance += order.payout;
+    } else {
+      order.payout = 0;
+    }
+  } else if (won) {
+    order.payout = Number((order.amount + profit).toFixed(2));
+    user.wallet.demoBalance += order.payout;
+  } else {
+    order.payout = 0;
+  }
+
+  user.wallet.transactions.unshift({
+    id: `tx-${order.id}-${won ? 'win' : 'lose'}`,
+    title: won ? 'Order Won' : 'Order Lost',
+    description: won
+      ? `${order.symbol} ${order.side.toUpperCase()} · ${sign}${order.amount.toLocaleString()} returned ${sign}${order.payout.toLocaleString()} at ${pct}%`
+      : `${order.symbol} ${order.side.toUpperCase()} · ${sign}${order.amount.toLocaleString()} closed at 0`,
+    time: 'Just now', amount: won ? order.payout : order.amount, currency, type: 'trade',
+    tone: won ? 'up' : 'down', status: 'completed',
+  });
+
+  persist();
+  return true;
+}
+
+// Lazy settlement: when an open order passes its expiry time, close it against
+// the live market move (entry vs current price). Admins can still override
+// outcomes anytime before or after expiry via the control endpoints.
+function autoSettleOrders(user) {
+  let changed = false;
+  for (const order of user.orders || []) {
+    if (order.status !== 'open' || Date.now() < Number(order.expiresAt || 0)) continue;
+    const exit = currentPrice(order.symbol);
+    const outcome = order.side === 'down' ? exit <= order.entryPrice : exit >= order.entryPrice;
+    settleOrder(user, order, outcome ? 'win' : 'lose', undefined, 'market');
+    changed = true;
+  }
+  return changed;
+}
+
+// Wallet state snapshot used by the Instant Order page and admin console.
+function walletStateSnapshot(user) {
+  const w = user.wallet;
+  return {
+    realBalance: w.realBalance,
+    realUsdtBalance: w.realUsdtBalance,
+    frozenBalance: w.frozenBalance,
+    frozenUsdtBalance: w.frozenUsdtBalance,
+    totalBalance: w.realBalance + w.frozenBalance,
+    totalUsdtBalance: w.realUsdtBalance + w.frozenUsdtBalance,
+    creditTotal: w.demoBalance,
+    depositCredited: Number(w.depositCreditedTotal || 0),
+    depositCreditedUsdt: Number(w.depositCreditedTotalUsdt || 0),
+  };
+}
 
 // ============================================================================
 // 3. AUTH & PROFILE APIS
@@ -541,6 +700,156 @@ app.get('/api/admin/orders', (req, res) => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// ADMIN & SUPER ADMIN ORDER CONTROL ROOM
+// Both roles control every order: win / lose / cancel, change currency, time
+// and payout % — anytime. Super admins can additionally command wallet state.
+// ---------------------------------------------------------------------------
+
+// Role probe for the admin console (super admin vs admin badge).
+app.get('/api/admin/role', (req, res) => {
+  const role = resolveRole(req.query.code);
+  if (!role) return res.status(403).json({ error: 'Invalid administrator code' });
+  res.json({ success: true, role });
+});
+
+// Every order across all users, newest first (settles expired orders first).
+app.get('/api/admin/orders/all', (req, res) => {
+  const role = resolveRole(req.query.code);
+  if (!role) return res.status(403).json({ error: 'Invalid administrator code' });
+
+  const orders = [];
+  for (const user of userDb.values()) {
+    ensureOrdersArray(user);
+    autoSettleOrders(user);
+    for (const order of user.orders) {
+      orders.push({ ...order, userEmail: user.email, userName: user.name });
+    }
+  }
+  orders.sort((left, right) => Number(right.createdAt || 0) - Number(left.createdAt || 0));
+  res.json({ success: true, role, orders, total: orders.length });
+});
+
+// Force an order outcome anytime: win / lose / cancel (+ optional payout %).
+app.post('/api/admin/orders/control', (req, res) => {
+  const role = resolveRole(req.body?.code);
+  if (!role) return res.status(403).json({ error: 'Invalid administrator code' });
+
+  const { orderId, action, percent } = req.body || {};
+  if (!orderId || !['win', 'lose', 'cancel'].includes(action)) {
+    return res.status(400).json({ error: 'orderId and action (win|lose|cancel) are required' });
+  }
+
+  const found = findOrderById(String(orderId));
+  if (!found) return res.status(404).json({ error: 'Order not found' });
+  if (found.order.status !== 'open') {
+    return res.status(409).json({ error: `Order already ${found.order.status}`, order: found.order });
+  }
+
+  const ok = settleOrder(found.user, found.order, action, percent, role);
+  res.json({
+    success: ok,
+    role,
+    order: found.order,
+    wallet: walletStateSnapshot(found.user),
+    message: `Order ${found.order.id} ${action === 'win' ? 'closed as WIN' : action === 'lose' ? 'closed as LOSE' : 'cancelled & refunded'} by ${role === 'super' ? 'super admin' : 'admin'}`,
+  });
+});
+
+// Change an open order's currency, time or payout % anytime.
+app.post('/api/admin/orders/update', (req, res) => {
+  const role = resolveRole(req.body?.code);
+  if (!role) return res.status(403).json({ error: 'Invalid administrator code' });
+
+  const { orderId, currency, durationSeconds, payoutPercent } = req.body || {};
+  const found = findOrderById(String(orderId || ''));
+  if (!found) return res.status(404).json({ error: 'Order not found' });
+  const { user, order } = found;
+  if (order.status !== 'open') {
+    return res.status(409).json({ error: `Order already ${order.status} — only open orders can be changed`, order });
+  }
+
+  const changes = [];
+
+  if (payoutPercent != null && Number.isFinite(Number(payoutPercent))) {
+    order.payoutPercent = Math.min(500, Math.max(1, Number(payoutPercent)));
+    changes.push(`payout % → ${order.payoutPercent}%`);
+  }
+
+  if (durationSeconds != null && Number.isFinite(Number(durationSeconds))) {
+    order.durationSeconds = Math.min(86400, Math.max(5, Math.round(Number(durationSeconds))));
+    order.expiresAt = Date.now() + order.durationSeconds * 1000;
+    changes.push(`time → ${order.durationSeconds}s`);
+  }
+
+  const nextCurrency = currency === 'USDT' ? 'USDT' : currency === 'INR' ? 'INR' : null;
+  if (nextCurrency && nextCurrency !== order.currency) {
+    if (order.accountType === 'real') {
+      // Move the escrow between the INR and USDT books 1:1 at book level.
+      if (order.currency === 'INR') {
+        user.wallet.frozenBalance = Math.max(0, user.wallet.frozenBalance - order.amount);
+        user.wallet.frozenUsdtBalance += order.amount;
+      } else {
+        user.wallet.frozenUsdtBalance = Math.max(0, user.wallet.frozenUsdtBalance - order.amount);
+        user.wallet.frozenBalance += order.amount;
+      }
+      const item = (user.wallet.frozenItems || []).find((entry) => entry.id === order.id);
+      if (item) {
+        item.currency = nextCurrency;
+        item.title = `${order.symbol} ${order.side === 'up' ? 'BUY UP' : 'BUY DOWN'} Order`;
+      }
+    }
+    order.currency = nextCurrency;
+    changes.push(`currency → ${nextCurrency}`);
+  }
+
+  if (changes.length === 0) {
+    return res.status(400).json({ error: 'Nothing to update — provide currency, durationSeconds or payoutPercent' });
+  }
+
+  persist();
+  res.json({ success: true, role, order, changes, wallet: walletStateSnapshot(user) });
+});
+
+// SUPER ADMIN only — direct wallet state command (deposit / credit / frozen).
+app.post('/api/admin/wallet/adjust', (req, res) => {
+  const role = resolveRole(req.body?.code);
+  if (role !== 'super') return res.status(403).json({ error: 'Super admin code required for wallet control' });
+
+  const { email, field, delta } = req.body || {};
+  const fields = {
+    real: 'realBalance',
+    realUsdt: 'realUsdtBalance',
+    frozen: 'frozenBalance',
+    frozenUsdt: 'frozenUsdtBalance',
+    demo: 'demoBalance',
+  };
+  const key = fields[String(field || '')];
+  if (!email || !key || !Number.isFinite(Number(delta))) {
+    return res.status(400).json({ error: 'email, field (real|realUsdt|frozen|frozenUsdt|demo) and numeric delta are required' });
+  }
+
+  const user = getOrCreateUser(email);
+  const next = Number((Number(user.wallet[key]) + Number(delta)).toFixed(2));
+  if (next < 0) return res.status(400).json({ error: `Adjustment would make ${field} negative (current ${user.wallet[key]})` });
+  user.wallet[key] = next;
+
+  user.wallet.transactions.unshift({
+    id: `tx-admin-${Date.now()}`,
+    title: 'Balance Sync',
+    description: `${field} balance reconciliation ${Number(delta) >= 0 ? '+' : ''}${Number(delta).toLocaleString()}`,
+    time: 'Just now',
+    amount: Math.abs(Number(delta)),
+    currency: field === 'demo' || field.includes('Usdt') ? field.toUpperCase() : 'INR',
+    type: 'adjust',
+    tone: Number(delta) >= 0 ? 'up' : 'down',
+    status: 'completed',
+  });
+
+  persist();
+  res.json({ success: true, field, delta: Number(delta), wallet: walletStateSnapshot(user) });
+});
+
 // Login
 app.post('/api/auth/login', (req, res) => {
   const { email, name } = req.body || {};
@@ -601,6 +910,16 @@ app.get('/api/wallet/summary', (req, res) => {
       totalConverted: w.totalConverted,
       assetHoldings: w.assetHoldings,
       frozenItemsCount: w.frozenItems.length,
+      // Balance state (deposit / credit / total / frozen) shown on the wallet
+      // and Instant Order pages.
+      depositCredited: Number(w.depositCreditedTotal || 0),
+      depositCreditedUsdt: Number(w.depositCreditedTotalUsdt || 0),
+      creditTotal: w.demoBalance,
+      totalBalance: w.realBalance + w.frozenBalance,
+      totalUsdtBalance: w.realUsdtBalance + w.frozenUsdtBalance,
+      frozenTotal: w.frozenBalance,
+      frozenTotalUsdt: w.frozenUsdtBalance,
+      openOrders: (user.orders || []).filter((entry) => entry.status === 'open').length,
     },
   });
 });
@@ -637,6 +956,18 @@ app.post('/api/wallet/frozen/release', (req, res) => {
 
   const [item] = user.wallet.frozenItems.splice(itemIndex, 1);
   const isINR = item.currency === 'INR';
+
+  // Keep the order board in sync when a user releases an order hold.
+  if (item.category === 'order') {
+    ensureOrdersArray(user);
+    const releasedOrder = user.orders.find((entry) => entry.id === item.id);
+    if (releasedOrder && releasedOrder.status === 'open') {
+      releasedOrder.status = 'cancelled';
+      releasedOrder.settledAt = new Date().toISOString();
+      releasedOrder.settledBy = 'user-release';
+      releasedOrder.payout = releasedOrder.amount;
+    }
+  }
 
   if (isINR) {
     user.wallet.frozenBalance = Math.max(0, user.wallet.frozenBalance - item.amount);
@@ -679,6 +1010,10 @@ app.post('/api/wallet/deposit/approve', (req, res) => {
 
   const [item] = user.wallet.frozenItems.splice(itemIndex, 1);
   const isINR = item.currency === 'INR';
+
+  // Track lifetime credited deposits for the wallet state view.
+  if (isINR) user.wallet.depositCreditedTotal = Number(user.wallet.depositCreditedTotal || 0) + item.amount;
+  else user.wallet.depositCreditedTotalUsdt = Number(user.wallet.depositCreditedTotalUsdt || 0) + item.amount;
 
   if (isINR) {
     user.wallet.frozenBalance = Math.max(0, user.wallet.frozenBalance - item.amount);
@@ -895,15 +1230,41 @@ app.post('/api/withdraw/submit', (req, res) => {
 // ============================================================================
 
 app.post('/api/orders/create', (req, res) => {
-  const { email, symbol = 'BTC', side = 'up', amount, currency = 'INR', accountType = 'real' } = req.body || {};
+  const {
+    email, symbol = 'BTC', side = 'up', amount, currency = 'INR',
+    accountType = 'real', durationSeconds = 60, payoutPercent = 5,
+  } = req.body || {};
   const amt = Number(amount || 0);
 
   if (!email || amt <= 0) return res.status(400).json({ error: 'Email and positive amount required' });
 
-  const user = getOrCreateUser(email);
+  const normalizedSymbol = String(symbol).toUpperCase();
+  const normalizedCurrency = currency === 'USDT' ? 'USDT' : 'INR';
+  const normalizedSide = side === 'down' ? 'down' : 'up';
+  const dur = Math.min(86400, Math.max(5, Math.round(Number(durationSeconds) || 60)));
+  const pct = Math.min(500, Math.max(1, Number(payoutPercent) || 5));
 
-  if (accountType === 'real') {
-    const isINR = currency === 'INR';
+  const user = getOrCreateUser(email);
+  ensureOrdersArray(user);
+
+  const now = Date.now();
+  const order = {
+    id: `ord-${now}`,
+    symbol: normalizedSymbol,
+    side: normalizedSide,
+    amount: amt,
+    currency: normalizedCurrency,
+    accountType: accountType === 'demo' ? 'demo' : 'real',
+    status: 'open',
+    payoutPercent: pct,
+    durationSeconds: dur,
+    createdAt: now,
+    expiresAt: now + dur * 1000,
+    entryPrice: currentPrice(normalizedSymbol),
+  };
+
+  if (order.accountType === 'real') {
+    const isINR = normalizedCurrency === 'INR';
     const available = isINR ? user.wallet.realBalance : user.wallet.realUsdtBalance;
 
     if (amt > available) {
@@ -921,13 +1282,13 @@ app.post('/api/orders/create', (req, res) => {
     }
 
     const orderItem = {
-      id: `ord-${Date.now()}`,
-      title: `${symbol} ${side === 'up' ? 'BUY UP' : 'BUY DOWN'} Order`,
+      id: order.id,
+      title: `${normalizedSymbol} ${normalizedSide === 'up' ? 'BUY UP' : 'BUY DOWN'} Order`,
       category: 'order',
-      reason: `Active limit order scenario on ${symbol}/USDT`,
+      reason: `Active limit order scenario on ${normalizedSymbol}/USDT`,
       amount: amt,
-      currency,
-      asset: symbol,
+      currency: normalizedCurrency,
+      asset: normalizedSymbol,
       date: 'Just now',
       status: 'locked',
       canRelease: true,
@@ -935,33 +1296,67 @@ app.post('/api/orders/create', (req, res) => {
     user.wallet.frozenItems.unshift(orderItem);
 
     user.wallet.transactions.unshift({
-      id: `tx-ord-${Date.now()}`,
-      title: `Order Placed (${side.toUpperCase()})`,
-      description: `${currency} ${amt} held in frozen order escrow`,
+      id: `tx-ord-${now}`,
+      title: `Order Placed (${normalizedSide.toUpperCase()})`,
+      description: `${normalizedCurrency} ${amt} held in frozen order escrow`,
       time: 'Just now',
       amount: amt,
-      currency,
+      currency: normalizedCurrency,
       type: 'trade',
       tone: 'down',
       status: 'pending',
     });
 
+    user.orders.unshift(order);
     persist();
     return res.json({
       success: true,
-      message: `${currency === 'INR' ? '₹' : '₮'}${amt} placed into Frozen Amount section`,
-      orderId: orderItem.id,
+      message: `${normalizedCurrency === 'INR' ? '₹' : '₮'}${amt} placed into Frozen Amount section`,
+      orderId: order.id,
+      order,
       status: 'locked',
       newAvailable: user.wallet.realBalance,
       newFrozen: user.wallet.frozenBalance,
+      wallet: walletStateSnapshot(user),
     });
   }
 
-  // Demo order
+  // Linked credit order — escrows practice credits for the duration.
+  if (amt > user.wallet.demoBalance) {
+    return res.status(400).json({
+      error: `Insufficient credit balance. Available: ${user.wallet.demoBalance.toLocaleString()} credits.`,
+    });
+  }
+  user.wallet.demoBalance -= amt;
+  user.orders.unshift(order);
+  persist();
+
   res.json({
     success: true,
-    message: 'Demo practice scenario active',
-    status: 'demo_active',
+    message: `Order active — ${amt.toLocaleString()} credits in play`,
+    orderId: order.id,
+    order,
+    status: 'open',
+    newDemoBalance: user.wallet.demoBalance,
+    wallet: walletStateSnapshot(user),
+  });
+});
+
+// Every order for the Instant Order page board (settles expired orders first).
+app.get('/api/orders/list', (req, res) => {
+  const email = String(req.query.email || '').trim().toLowerCase();
+  if (!email) return res.status(400).json({ error: 'Email is required' });
+  const user = userDb.get(email);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  ensureOrdersArray(user);
+  autoSettleOrders(user);
+
+  res.json({
+    success: true,
+    orders: user.orders,
+    total: user.orders.length,
+    wallet: walletStateSnapshot(user),
   });
 });
 

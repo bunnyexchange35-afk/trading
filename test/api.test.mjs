@@ -338,4 +338,162 @@ describe('Mudrexx Earn Backend Test Suite', () => {
       assert.equal(data.releasedAmount, 200);
     });
   });
+
+  describe('Order Board & Admin / Super Admin Control Commands', () => {
+    const testEmail = `boarduser_${Date.now()}@mudrexx.com`;
+    let orderId;
+    let creditOrderId;
+
+    before(async () => {
+      await fetch(`${BASE_URL}/api/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Board Trader', email: testEmail }),
+      });
+      await fetch(`${BASE_URL}/api/wallet/convert-demo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: testEmail, demoCredits: 8000 }),
+      });
+    });
+
+    test('GET /api/admin/role resolves admin and super admin codes', async () => {
+      const admin = await (await fetch(`${BASE_URL}/api/admin/role?code=ADMIN777`)).json();
+      assert.equal(admin.role, 'admin');
+      const superAdmin = await (await fetch(`${BASE_URL}/api/admin/role?code=MUDREXX-SUPER`)).json();
+      assert.equal(superAdmin.role, 'super');
+      const invalid = await fetch(`${BASE_URL}/api/admin/role?code=NOPE`);
+      assert.equal(invalid.status, 403);
+    });
+
+    test('POST /api/orders/create records duration, payout % and entry price on the board', async () => {
+      const res = await fetch(`${BASE_URL}/api/orders/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: testEmail, symbol: 'ETH', side: 'up', amount: 300,
+          currency: 'INR', accountType: 'real', durationSeconds: 30, payoutPercent: 40,
+        }),
+      });
+      const data = await res.json();
+      assert.equal(data.success, true);
+      assert.equal(data.order.status, 'open');
+      assert.equal(data.order.payoutPercent, 40);
+      assert.equal(data.order.durationSeconds, 30);
+      assert.ok(data.order.entryPrice > 0);
+      assert.ok(data.wallet.totalBalance > 0);
+      orderId = data.orderId;
+    });
+
+    test('POST /api/admin/orders/update changes payout %, time and currency anytime', async () => {
+      const res = await fetch(`${BASE_URL}/api/admin/orders/update`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: 'ADMIN777', orderId, payoutPercent: 50, durationSeconds: 120, currency: 'USDT' }),
+      });
+      const data = await res.json();
+      assert.equal(data.success, true);
+      assert.equal(data.order.payoutPercent, 50);
+      assert.equal(data.order.durationSeconds, 120);
+      assert.equal(data.order.currency, 'USDT');
+      assert.equal(data.wallet.frozenUsdtBalance, 300);
+      // switch back for the settle test
+      const back = await fetch(`${BASE_URL}/api/admin/orders/update`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: 'MUDREXX-SUPER', orderId, currency: 'INR' }),
+      });
+      assert.equal((await back.json()).order.currency, 'INR');
+    });
+
+    test('POST /api/admin/orders/control forces a WIN with payout to wallet', async () => {
+      const before = await (await fetch(`${BASE_URL}/api/wallet/summary?email=${encodeURIComponent(testEmail)}`)).json();
+      const res = await fetch(`${BASE_URL}/api/admin/orders/control`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: 'ADMIN777', orderId, action: 'win' }),
+      });
+      const data = await res.json();
+      assert.equal(data.success, true);
+      assert.equal(data.order.status, 'won');
+      assert.equal(data.order.payout, 450); // 300 + 50%
+      const after = await (await fetch(`${BASE_URL}/api/wallet/summary?email=${encodeURIComponent(testEmail)}`)).json();
+      assert.equal(after.summary.realBalance, before.summary.realBalance + 450);
+    });
+
+    test('control on a settled order is rejected with 409', async () => {
+      const res = await fetch(`${BASE_URL}/api/admin/orders/control`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: 'ADMIN777', orderId, action: 'lose' }),
+      });
+      assert.equal(res.status, 409);
+    });
+
+    test('credit orders escrow credits and a forced LOSE consumes them', async () => {
+      const create = await fetch(`${BASE_URL}/api/orders/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: testEmail, symbol: 'BTC', side: 'down', amount: 500,
+          currency: 'INR', accountType: 'demo', durationSeconds: 60, payoutPercent: 20,
+        }),
+      });
+      const created = await create.json();
+      assert.equal(created.success, true);
+      creditOrderId = created.orderId;
+      assert.ok(created.newDemoBalance < 2000);
+
+      const lose = await fetch(`${BASE_URL}/api/admin/orders/control`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: 'MUDREXX-SUPER', orderId: creditOrderId, action: 'lose' }),
+      });
+      const lost = await lose.json();
+      assert.equal(lost.order.status, 'lost');
+      assert.equal(lost.order.payout, 0);
+    });
+
+    test('GET /api/orders/list returns the full board with wallet state', async () => {
+      const res = await fetch(`${BASE_URL}/api/orders/list?email=${encodeURIComponent(testEmail)}`);
+      const data = await res.json();
+      assert.equal(data.success, true);
+      assert.equal(data.orders.length, 2);
+      assert.ok(data.wallet.creditTotal >= 0);
+      assert.ok(data.wallet.depositCredited === 0);
+    });
+
+    test('GET /api/admin/orders/all lists every order with role', async () => {
+      const res = await fetch(`${BASE_URL}/api/admin/orders/all?code=MUDREXX-SUPER`);
+      const data = await res.json();
+      assert.equal(data.role, 'super');
+      assert.ok(data.orders.some((entry) => entry.id === orderId));
+      assert.ok(data.orders.every((entry) => entry.userEmail));
+    });
+
+    test('POST /api/admin/wallet/adjust is super-admin only and commands wallet state', async () => {
+      const denied = await fetch(`${BASE_URL}/api/admin/wallet/adjust`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: 'ADMIN777', email: testEmail, field: 'real', delta: 100 }),
+      });
+      assert.equal(denied.status, 403);
+
+      const allowed = await fetch(`${BASE_URL}/api/admin/wallet/adjust`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: 'MUDREXX-SUPER', email: testEmail, field: 'real', delta: 1000 }),
+      });
+      const data = await allowed.json();
+      assert.equal(data.success, true);
+      assert.equal(data.field, 'real');
+
+      const negative = await fetch(`${BASE_URL}/api/admin/wallet/adjust`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: 'MUDREXX-SUPER', email: testEmail, field: 'real', delta: -1000000 }),
+      });
+      assert.equal(negative.status, 400);
+    });
+  });
 });

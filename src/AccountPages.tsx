@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import {
   AlertCircle, ArrowDownLeft, ArrowRight, ArrowUpRight, Award, Banknote, Bell, BookOpen,
@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { CoinIcon, EmptyState, PageHero } from './components';
 import { useApp, type FrozenFundItem } from './app-context';
+import { getWalletSummary, type WalletSummaryResponse } from './api';
 import { INR_RATE, money } from './data';
 import { useMarket } from './market-context';
 
@@ -133,6 +134,23 @@ export function WalletPage() {
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [accountView, setAccountView] = useState<'all' | 'real' | 'demo'>('all');
+  const [summary, setSummary] = useState<WalletSummaryResponse['summary'] | null>(null);
+
+  // Balance state (deposit / credit / total / frozen) from the backend summary.
+  useEffect(() => {
+    if (!user) return;
+    let active = true;
+    void getWalletSummary(user.email)
+      .then((response) => {
+        if (active && response.success && response.summary) setSummary(response.summary);
+      })
+      .catch(() => {
+        /* summary stays on wallet-derived fallback below */
+      });
+    return () => {
+      active = false;
+    };
+  }, [user, user?.wallet.realBalance, user?.wallet.frozenBalance, user?.wallet.demoBalance, user?.wallet.realUsdtBalance, user?.wallet.frozenUsdtBalance]);
 
   if (!user) {
     return (
@@ -263,6 +281,30 @@ export function WalletPage() {
                 {wallet.demoLinked ? 'Linked' : 'Link Now'}
               </button>
             </div>
+          </div>
+
+          {/* Balance State — Deposit / Credit / Total / Frozen */}
+          <div className="wallet-state-strip">
+            <span>
+              <small><ArrowDownLeft size={12} /> Deposit</small>
+              <strong>₹{Math.floor(summary?.depositCredited ?? 0).toLocaleString('en-IN')}{(summary?.depositCreditedUsdt ?? 0) > 0 ? ` + ₮${Math.floor(summary?.depositCreditedUsdt ?? 0).toLocaleString()}` : ''}</strong>
+            </span>
+            <span>
+              <small><Coins size={12} /> Credit</small>
+              <strong>{(summary?.creditTotal ?? wallet.demoBalance).toLocaleString()}</strong>
+            </span>
+            <span>
+              <small><WalletIcon size={12} /> Total</small>
+              <strong>₹{Math.floor(summary?.totalBalance ?? totalNetRealINR).toLocaleString('en-IN')}{(summary?.totalUsdtBalance ?? (wallet.realUsdtBalance + wallet.frozenUsdtBalance)) > 0 ? ` + ₮${Math.floor(summary?.totalUsdtBalance ?? (wallet.realUsdtBalance + wallet.frozenUsdtBalance)).toLocaleString()}` : ''}</strong>
+            </span>
+            <span>
+              <small><Lock size={12} /> Frozen</small>
+              <strong>₹{Math.floor(summary?.frozenTotal ?? frozenRealINR).toLocaleString('en-IN')}{(summary?.frozenTotalUsdt ?? wallet.frozenUsdtBalance) > 0 ? ` + ₮${Math.floor(summary?.frozenTotalUsdt ?? wallet.frozenUsdtBalance).toLocaleString()}` : ''}</strong>
+            </span>
+            <span className="state-orders">
+              <small><TrendingUp size={12} /> Open orders</small>
+              <strong>{summary?.openOrders ?? 0}</strong>
+            </span>
           </div>
 
           {/* Balance Overview Grid */}

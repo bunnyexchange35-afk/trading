@@ -43,7 +43,7 @@ Repo layout:
 |---|---|
 | `src/` | React + TypeScript frontend (Vite) |
 | `dist/` | Built frontend output (`npm run build`) — served by worker or Express |
-| `server.mjs` | The Express **backend code** — all wallet/auth/order APIs |
+| `server.mjs` | The Express **backend code** — all wallet/auth/order APIs + the order engine (see [`ADMIN-CONTROL.md`](ADMIN-CONTROL.md) for the admin command summary) |
 | `server/data/users.json` | Persistent user store (gitignored — mount a volume in prod) |
 | `trading-worker/` | Cloudflare Worker (SPA host + native market API + proxy) |
 | `Dockerfile`, `docker-compose.yml`, `.dockerignore` | One-command backend deploy (builds frontend, serves SPA + API) |
@@ -142,6 +142,7 @@ Base URL: **same origin** (`/api/...`). Full request/response examples live in [
 | Variable | Where | Required | Description |
 |---|---|---|---|
 | `ADMIN_CODES` | Backend env | **Set this in production** | Comma-separated admin/invitation codes. **Defaults if unset: `MUDREXX-ADMIN, ADMIN-2024, ADMIN777, MEDRIX888, ADMIN`** — always override. |
+| `SUPER_ADMIN_CODES` | Backend env | No | Super admin codes (order control + wallet state commands). Defaults: `MUDREXX-SUPER, SUPER-2024`. See [`ADMIN-CONTROL.md`](ADMIN-CONTROL.md). |
 | `PORT` | Backend env | No | Defaults to `8080` |
 | `BACKEND_ORIGIN` | Worker var (CF dashboard) | For Option B | e.g. `https://your-backend.onrender.com` — worker proxies non-native `/api/*` here |
 | `BACKEND` | Worker service binding | Optional | Alternative to `BACKEND_ORIGIN`: bind directly to another Worker |

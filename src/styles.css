@@ -317,3 +317,39 @@
 .scenario-strip small{color:#9a949f;font-size:10px}
 @media (max-width:850px){.market-overview{grid-template-columns:1fr 1fr}.market-overview>div:nth-child(2){border-right:0}}
 @media (max-width:700px){.market-overview{grid-template-columns:1fr}.market-overview>div{border-right:0;border-bottom:1px solid #ffffff14;padding:14px 0}.market-overview>div:last-child{border-bottom:0}}
+
+/* ===== Instant Order board + wallet state strip ===== */
+.order-board{margin:34px auto 60px;background:#fff;border:1px solid var(--border);border-radius:20px;box-shadow:0 10px 40px #241c310b;padding:22px 24px}
+.ob-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;flex-wrap:wrap;margin-bottom:16px}
+.ob-heading h2{margin:6px 0 6px;font:800 22px/1.1 'Manrope',sans-serif;letter-spacing:-.03em;color:#241b3e}
+.ob-heading p{margin:0;color:#7b7484;font-size:12px;max-width:460px}
+.ob-wallet{display:flex;gap:10px;flex-wrap:wrap}
+.ob-wallet>span{background:#faf9fc;border:1px solid var(--border);border-radius:12px;padding:9px 13px;min-width:96px}
+.ob-wallet small{display:block;font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:#9a93a4;font-weight:800}
+.ob-wallet strong{display:block;margin-top:4px;font:700 14px 'Manrope',sans-serif;color:#2c2440;white-space:nowrap}
+.ob-list{border:1px solid var(--border);border-radius:14px;overflow:hidden}
+.ob-row{display:grid;grid-template-columns:1.5fr 1fr .6fr .8fr 1.2fr 1.2fr;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid #f0edf3;font-size:12px;color:#5f5868}
+.ob-row:last-child{border-bottom:0}
+.ob-head{background:#faf9fb;color:#9c94a5;font-size:9px;text-transform:uppercase;letter-spacing:.12em;font-weight:800;padding:10px 16px}
+.ob-empty{grid-template-columns:1fr;justify-items:center;min-height:120px;color:#968d9d}
+.ob-order{display:flex;align-items:center;gap:9px;min-width:0}
+.ob-side{display:grid;place-items:center;width:26px;height:26px;border-radius:9px;flex:0 0 auto}
+.ob-side.up{background:#e7f8f2;color:#14815f}
+.ob-side.down{background:#fff0f2;color:#d34b5b}
+.ob-order strong{display:block;color:#2c2440;font-size:13px}
+.ob-order small{display:block;color:#9a93a4;font-size:10px;margin-top:2px}
+.ob-amount{font-weight:700;color:#37303f}
+.ob-percent{color:#6942e0;font-weight:800}
+.ob-price{color:#8b8494;font-variant-numeric:tabular-nums}
+.ob-status{justify-self:start;display:inline-block;padding:6px 11px;border-radius:20px;font-size:10px;font-weight:800}
+.ob-status.open{background:#fff5e4;color:#a96c12}
+.ob-status.won{background:#e9f8f3;color:#14815f}
+.ob-status.lost{background:#fff0f2;color:#d34b5b}
+.ob-status.cancelled{background:#f3f3f5;color:#77717e}
+.wallet-state-strip{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin:16px 0 4px}
+.wallet-state-strip>span{background:#fff;border:1px solid var(--border);border-radius:14px;padding:12px 14px}
+.wallet-state-strip small{display:flex;align-items:center;gap:5px;font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:#9a93a4;font-weight:800}
+.wallet-state-strip small svg{color:#a78edb}
+.wallet-state-strip strong{display:block;margin-top:6px;font:700 15px 'Manrope',sans-serif;color:#2c2440;white-space:nowrap}
+@media(max-width:900px){.wallet-state-strip{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:640px){.ob-row{grid-template-columns:1.4fr 1fr 1fr;row-gap:8px}.ob-head{display:none}.ob-price,.ob-time{display:none}.order-board{padding:16px}.wallet-state-strip{grid-template-columns:1fr 1fr}}

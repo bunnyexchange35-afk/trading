@@ -6,7 +6,8 @@ import {
   Trophy, Wallet, X,
 } from 'lucide-react';
 import { CoinIcon } from './components';
-import { createOrder } from './api';
+import { apiMessage, createOrder, listOrders, type WalletState } from './api';
+import type { TradeOrder } from './types';
 import { ASSETS, INR_RATE, money } from './data';
 import { useMarket } from './market-context';
 import { useApp } from './app-context';
@@ -36,7 +37,7 @@ export default function InstantOrder() {
 
   const { quote } = useMarket();
   const market = quote(symbol);
-  const { user, openAuth, addFrozenOrder, openConversionModal, notify } = useApp();
+  const { user, openAuth, addFrozenOrder, openConversionModal, notify, refreshUser } = useApp();
 
   const chooseSymbol = (next: string) => {
     setSymbol(next);
@@ -74,6 +75,8 @@ export default function InstantOrder() {
         currency,
         asset: symbol,
         side,
+        durationSeconds: duration,
+        payoutPercent: profitTarget,
       });
 
       if (success) {
@@ -88,26 +91,30 @@ export default function InstantOrder() {
         });
       }
     } else {
-      // Demo order — still registered with the backend as a practice scenario.
+      // Linked credit order — escrows credits on the backend order board.
       try {
-        await createOrder({
+        const res = await createOrder({
           email: user.email,
           symbol,
           side,
           amount: orderAmount,
           currency,
           accountType: 'demo',
+          durationSeconds: duration,
+          payoutPercent: profitTarget,
         });
-      } catch {
-        /* backend unreachable — the context notice already explains it */
+        if (!res?.success) throw new Error(res?.error || 'Order could not be placed.');
+        await refreshUser(user.email);
+        setPopup({
+          kind: 'order',
+          title: 'Order Placed',
+          copy: `${side === 'up' ? 'BUY UP' : 'BUY DOWN'} ${symbol} at ${money(market.price)} for ${
+            duration < 60 ? `${duration}s` : `${duration / 60}m`
+          }. ${orderAmount.toLocaleString()} credits are in play until the order closes.`,
+        });
+      } catch (orderError) {
+        notify('Order failed', apiMessage(orderError), 'warning');
       }
-      setPopup({
-        kind: 'order',
-        title: 'Demo Scenario Active',
-        copy: `Demo practice scenario: ${side === 'up' ? 'BUY UP' : 'BUY DOWN'} ${symbol} at ${money(
-          market.price
-        )} for ${duration < 60 ? `${duration}s` : `${duration / 60}m`}.`,
-      });
     }
   };
 
@@ -367,6 +374,7 @@ export default function InstantOrder() {
       </section>
 
       <AviatorGame onResult={setPopup} />
+      <OrdersBoard />
       {popup && (
         <ResultModal
           popup={popup}
@@ -784,6 +792,127 @@ function AviatorGame({ onResult }: { onResult: (value: ResultPopup) => void }) {
             <Link to="/wallet#conversion-desk">Open Demo-to-Real Conversion Desk <ArrowRight /></Link>
           </aside>
         </div>
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Live order board — every order placed from this page lands here with its
+ * win / lose state, payout %, currency, time and wallet balance state.
+ */
+function OrdersBoard() {
+  const { user, notify, refreshUser } = useApp();
+  const [orders, setOrders] = useState<TradeOrder[]>([]);
+  const [walletState, setWalletState] = useState<WalletState | null>(null);
+  const seen = useRef<Map<string, string>>(new Map());
+
+  useEffect(() => {
+    if (!user) return;
+    let active = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const tick = async () => {
+      try {
+        const res = await listOrders(user.email);
+        if (active && res.success) {
+          setOrders(res.orders || []);
+          setWalletState(res.wallet || null);
+          for (const order of res.orders || []) {
+            const previous = seen.current.get(order.id);
+            if (previous === 'open' && order.status !== 'open') {
+              const sign = order.currency === 'INR' ? '₹' : '₮';
+              if (order.status === 'won') {
+                notify('Order won 🏆', `${order.symbol} ${order.side.toUpperCase()} returned ${sign}${Math.floor(order.payout || 0).toLocaleString()}.`, 'success');
+              } else if (order.status === 'lost') {
+                notify('Order closed', `${order.symbol} ${order.side.toUpperCase()} closed at 0.`, 'info');
+              } else {
+                notify('Order cancelled', `${order.symbol} order was refunded.`, 'info');
+              }
+              void refreshUser(user.email);
+            }
+            seen.current.set(order.id, order.status);
+          }
+        }
+      } catch {
+        /* backend momentarily unreachable — next poll retries */
+      } finally {
+        if (active) timer = setTimeout(tick, 4000);
+      }
+    };
+    void tick();
+    return () => {
+      active = false;
+      if (timer) clearTimeout(timer);
+    };
+  }, [user, notify, refreshUser]);
+
+  if (!user) return null;
+
+  const fmtInr = (value: number) => `₹${Math.floor(value).toLocaleString('en-IN')}`;
+  const remaining = (order: TradeOrder) => Math.max(0, Math.ceil((order.expiresAt - Date.now()) / 1000));
+  const visible = orders.slice(0, 12);
+
+  return (
+    <section className="order-board container">
+      <div className="ob-heading">
+        <div>
+          <span className="eyebrow">ORDER BOARD</span>
+          <h2>Your orders</h2>
+          <p>Every order from this desk settles here — outcome, payout %, currency and time update live.</p>
+        </div>
+        <div className="ob-wallet">
+          <span><small>Deposit</small><strong>{walletState ? fmtInr(walletState.depositCredited) : '—'}{walletState && walletState.depositCreditedUsdt > 0 ? ` + ₮${Math.floor(walletState.depositCreditedUsdt).toLocaleString()}` : ''}</strong></span>
+          <span><small>Credit</small><strong>{walletState ? walletState.creditTotal.toLocaleString() : '—'}</strong></span>
+          <span><small>Total</small><strong>{walletState ? fmtInr(walletState.totalBalance) : '—'}</strong></span>
+          <span><small>Frozen</small><strong>{walletState ? fmtInr(walletState.frozenBalance) : '—'}{walletState && walletState.frozenUsdtBalance > 0 ? ` + ₮${Math.floor(walletState.frozenUsdtBalance).toLocaleString()}` : ''}</strong></span>
+        </div>
+      </div>
+
+      <div className="ob-list">
+        <div className="ob-row ob-head">
+          <span>Order</span><span>Amount</span><span>%</span><span>Time</span><span>Entry → Exit</span><span>Status</span>
+        </div>
+        {visible.length === 0 && <div className="ob-empty">No orders yet — your first order from this desk will appear here.</div>}
+        {visible.map((order) => (
+          <div className={`ob-row ob-${order.status}`} key={order.id}>
+            <span className="ob-order">
+              <b className={`ob-side ${order.side}`}>
+                {order.side === 'up' ? <ArrowUp size={13} /> : <ArrowDown size={13} />}
+              </b>
+              <span>
+                <strong>{order.symbol}</strong>
+                <small>{order.accountType === 'real' ? (order.currency === 'INR' ? 'Real · ₹' : 'Real · ₮') : 'Credits'}</small>
+              </span>
+            </span>
+            <span className="ob-amount">
+              {order.accountType === 'real'
+                ? `${order.currency === 'INR' ? '₹' : '₮'}${order.amount.toLocaleString('en-IN')}`
+                : `${order.amount.toLocaleString()} cr`}
+            </span>
+            <span className="ob-percent">{order.settledPercent ?? order.payoutPercent}%</span>
+            <span className="ob-time">
+              {order.status === 'open'
+                ? `${remaining(order)}s left`
+                : `${order.durationSeconds}s`}
+            </span>
+            <span className="ob-price">
+              {order.entryPrice >= 1 ? order.entryPrice.toFixed(2) : order.entryPrice.toPrecision(4)}
+              {' → '}
+              {order.exitPrice != null
+                ? order.exitPrice >= 1 ? order.exitPrice.toFixed(2) : order.exitPrice.toPrecision(4)
+                : '—'}
+            </span>
+            <span className={`ob-status ${order.status}`}>
+              {order.status === 'open'
+                ? 'Open'
+                : order.status === 'won'
+                ? `Won +${order.currency === 'INR' ? '₹' : order.accountType === 'demo' ? '' : '₮'}${Math.floor(order.payout || 0).toLocaleString('en-IN')}${order.accountType === 'demo' ? ' cr' : ''}`
+                : order.status === 'lost'
+                ? 'Lost'
+                : 'Cancelled'}
+            </span>
+          </div>
+        ))}
       </div>
     </section>
   );

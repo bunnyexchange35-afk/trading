@@ -12,7 +12,7 @@
  * when present.
  */
 
-import type { AuthProfile, FrozenFundItem, User, UserWallet, WalletTransaction } from './types';
+import type { AuthProfile, FrozenFundItem, TradeOrder, User, UserWallet, WalletTransaction } from './types';
 import type { MarketQuote } from './data';
 
 export const API_BASE: string = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
@@ -197,6 +197,14 @@ export type WalletSummaryResponse = {
     totalConverted: number;
     assetHoldings: Record<string, number>;
     frozenItemsCount: number;
+    depositCredited?: number;
+    depositCreditedUsdt?: number;
+    creditTotal?: number;
+    totalBalance?: number;
+    totalUsdtBalance?: number;
+    frozenTotal?: number;
+    frozenTotalUsdt?: number;
+    openOrders?: number;
   };
   error?: string;
 };
@@ -289,8 +297,64 @@ export type OrderResponse = {
   message?: string;
   orderId?: string;
   status?: string;
+  order?: TradeOrder;
   newAvailable?: number;
   newFrozen?: number;
+  newDemoBalance?: number;
+  wallet?: WalletState;
+  error?: string;
+};
+
+/** Balance state snapshot (deposit / credit / total / frozen). */
+export type WalletState = {
+  realBalance: number;
+  realUsdtBalance: number;
+  frozenBalance: number;
+  frozenUsdtBalance: number;
+  totalBalance: number;
+  totalUsdtBalance: number;
+  creditTotal: number;
+  depositCredited: number;
+  depositCreditedUsdt: number;
+};
+
+export type OrdersListResponse = {
+  success: boolean;
+  orders?: TradeOrder[];
+  total?: number;
+  wallet?: WalletState;
+  error?: string;
+};
+
+export type AdminRoleResponse = {
+  success: boolean;
+  role?: 'admin' | 'super';
+  error?: string;
+};
+
+export type AdminControlResponse = {
+  success: boolean;
+  role?: 'admin' | 'super';
+  order?: TradeOrder;
+  wallet?: WalletState;
+  message?: string;
+  changes?: string[];
+  error?: string;
+};
+
+export type AdminAllOrdersResponse = {
+  success: boolean;
+  role?: 'admin' | 'super';
+  orders?: TradeOrder[];
+  total?: number;
+  error?: string;
+};
+
+export type AdminAdjustResponse = {
+  success: boolean;
+  field?: string;
+  delta?: number;
+  wallet?: WalletState;
   error?: string;
 };
 
@@ -747,8 +811,50 @@ export async function createOrder(data: {
   amount: number;
   currency: 'INR' | 'USDT';
   accountType: 'real' | 'demo';
+  durationSeconds?: number;
+  payoutPercent?: number;
 }): Promise<OrderResponse> {
   return post<OrderResponse>('/api/orders/create', data);
+}
+
+export async function listOrders(email: string): Promise<OrdersListResponse> {
+  return request<OrdersListResponse>(`/api/orders/list?email=${encodeURIComponent(email)}`);
+}
+
+export async function getAdminRole(code: string): Promise<AdminRoleResponse> {
+  return request<AdminRoleResponse>(`/api/admin/role?code=${encodeURIComponent(code)}`);
+}
+
+export async function adminAllOrders(code: string): Promise<AdminAllOrdersResponse> {
+  return request<AdminAllOrdersResponse>(`/api/admin/orders/all?code=${encodeURIComponent(code)}`);
+}
+
+export async function adminOrderControl(params: {
+  code: string;
+  orderId: string;
+  action: 'win' | 'lose' | 'cancel';
+  percent?: number;
+}): Promise<AdminControlResponse> {
+  return post<AdminControlResponse>('/api/admin/orders/control', params);
+}
+
+export async function adminOrderUpdate(params: {
+  code: string;
+  orderId: string;
+  currency?: 'INR' | 'USDT';
+  durationSeconds?: number;
+  payoutPercent?: number;
+}): Promise<AdminControlResponse> {
+  return post<AdminControlResponse>('/api/admin/orders/update', params);
+}
+
+export async function adminWalletAdjust(params: {
+  code: string;
+  email: string;
+  field: 'real' | 'realUsdt' | 'frozen' | 'frozenUsdt' | 'demo';
+  delta: number;
+}): Promise<AdminAdjustResponse> {
+  return post<AdminAdjustResponse>('/api/admin/wallet/adjust', params);
 }
 
 export async function getOrderStatus(params: { email?: string; orderId?: string }): Promise<OrderStatusResponse> {
