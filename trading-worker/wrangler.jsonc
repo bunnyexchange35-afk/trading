@@ -3,11 +3,33 @@
   "name": "mudrex-earn",
   "main": "src/index.ts",
   "compatibility_date": "2026-08-20",
+
+  // The built SPA (../dist) served with single-page-application fallback.
   "assets": {
     "directory": "../dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application"
   },
+
+  // OPTIONAL persistent user/order storage. Without it the worker runs on an
+  // in-memory store (accounts reset on each deploy) — perfect for trying it
+  // out with zero setup. For persistence run:
+  //   npx wrangler kv namespace create USERS
+  // then paste the printed id below and re-deploy.
+  //
+  // "kv_namespaces": [
+  //   { "binding": "STORE", "id": "<YOUR-KV-NAMESPACE-ID>" }
+  // ],
+
+  // Institute invitation codes (comma separated). Defaults if unset:
+  //   ADMIN_CODES:      MUDREXX-ADMIN,ADMIN-2024,ADMIN777,MEDRIX888,ADMIN
+  //   SUPER_ADMIN_CODES: MUDREXX-SUPER,SUPER-2024
+  // Override here or in the Cloudflare dashboard (Settings -> Variables).
+  // "vars": {
+  //   "ADMIN_CODES": "CODE1,CODE2",
+  //   "SUPER_ADMIN_CODES": "BOSS1"
+  // },
+
   "observability": {
     "enabled": true
   }

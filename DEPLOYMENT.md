@@ -14,28 +14,28 @@ A India-first crypto earn/trading desk: live Coinbase-powered prices across 32 a
 
 ## 2. Architecture
 
+**Recommended: everything inside one Cloudflare Worker** (`npm run deploy` — that's the whole deploy). The worker serves the SPA, the live market endpoints, AND the complete backend (invitation-only registration, bearer-token sign-in, wallet, order engine, admin/super-admin control commands). Storage is the optional `STORE` KV namespace — without it the worker runs on an in-memory store that resets on each deploy (fine for a trial; add KV for persistence).
+
 ```
                         ┌─────────────────────────────────────────┐
    Browser ───────────▶ │  Cloudflare Worker  (mudrex-earn)       │
                         │                                         │
                         │  • serves dist/ SPA (all page routes)   │
-                        │  • /api/markets, /api/market/klines,    │
-                        │    /api/health  → served NATIVELY       │
-                        │    (live Coinbase fetch, edge-cached)   │
-                        │  • other /api/*, /a/*, /s/*, /verify    │
-                        │    → proxied to BACKEND_ORIGIN          │
-                        └───────────────────┬─────────────────────┘
-                                            │  (only if configured)
-                                            ▼
-                        ┌─────────────────────────────────────────┐
-                        │  Express backend  (server.mjs)          │
-                        │  • auth, wallet, orders, staking,       │
-                        │    deposits, admin APIs                 │
-                        │  • same market endpoints for local dev  │
-                        │  • persists to server/data/users.json   │
-                        │  • can also serve dist/ itself          │
+                        │  • live markets: /api/markets, klines   │
+                        │    (Coinbase public, edge-cached)       │
+                        │  • FULL BACKEND: invitation-only        │
+                        │    register, bearer-token sign-in,      │
+                        │    wallet, frozen funds, deposits,      │
+                        │    staking, the order engine and the    │
+                        │    admin / super admin control commands │
+                        │  • storage: STORE KV (persistent) or    │
+                        │    in-memory fallback (resets/redeploy) │
+                        │  • optional BACKEND / BACKEND_ORIGIN    │
+                        │    passthrough for anything else        │
                         └─────────────────────────────────────────┘
 ```
+
+The Express server (`server.mjs`) implements the exact same contract for local development and self-hosting (Option A) — same endpoints, same invitation codes, same tokens.
 
 Repo layout:
 
@@ -192,26 +192,28 @@ docker run -d --name mudrex-earn -p 8080:8080 \
 
 Notes: `PORT` is respected (platforms that inject it work as-is); user data lives at `/app/server/data` (declared `VOLUME`); admin codes default to a placeholder in compose — **always pass your own**.
 
-### Option B — Cloudflare Worker (fast, global) + backend origin
+### Option B — Cloudflare Worker, full stack (recommended, ready build)
 
-1. **Deploy the backend** (Option A steps) to any Node host → note its public URL, e.g. `https://mudrex-earn-api.onrender.com`.
-2. **Deploy the worker** from the repo root:
+The worker IS the backend — one deploy, nothing else to host:
 
+```bash
+npx wrangler login            # first time only
+npm install
+npm run deploy                # = npm run build && wrangler deploy -c trading-worker/wrangler.jsonc
+```
+
+Worker lands at `https://mudrex-earn.<your-subdomain>.workers.dev` — SPA, live markets, invitation-only registration, sign-in, wallet, order board and every admin / super admin control command all live there. Verify: `curl https://mudrex-earn.<subdomain>.workers.dev/api/health` → `{"ok":true,...}`.
+
+1. **Codes**: set `ADMIN_CODES` and `SUPER_ADMIN_CODES` in the dashboard (**Settings → Variables & Secrets**) or in `trading-worker/wrangler.jsonc` — defaults are public in the repo.
+2. **Persistence (optional)**: without it the worker runs on an in-memory store (accounts reset on each deploy). For persistence:
    ```bash
-   npm install
-   npm run deploy      # = npm run build && wrangler deploy -c trading-worker/wrangler.jsonc
+   npx wrangler kv namespace create USERS
+   # paste the printed id into trading-worker/wrangler.jsonc under
+   # kv_namespaces -> binding "STORE", then re-deploy
    ```
-
-   First-time: run `npx wrangler login` before deploying. Worker lands at `https://mudrex-earn.<your-subdomain>.workers.dev`.
-
-3. **Wire the backend** in the Cloudflare dashboard → Worker `mudrex-earn` → **Settings → Variables & Secrets**:
-   - `BACKEND_ORIGIN` = `https://mudrex-earn-api.onrender.com` (plaintext var is fine),
-   - *or* **Settings → Bindings** → add a Service Binding named `BACKEND` to a backend Worker,
-   - *or* bind a KV namespace and set key `config:backend-url`.
-
-   Without any of these, the site + market pages still work; auth/wallet calls return `503` with a setup hint.
-
-4. **Auto-deploy on push** (optional): Workers & Pages → `mudrex-earn` → Settings → Builds → Connect repo, build command `npm run build`, deploy command `npx wrangler deploy -c trading-worker/wrangler.jsonc`, production branch `main`.
+3. **Admin commands**: drive everything from the backend at the worker URL — see [`ADMIN-CONTROL.md`](ADMIN-CONTROL.md) and [`api.json`](api.json).
+4. **Optional passthrough**: `BACKEND` (service binding) or `BACKEND_ORIGIN` still work for paths the worker does not implement.
+5. **Auto-deploy on push** (optional): Workers & Pages → `mudrex-earn` → Settings → Builds → Connect repo, build command `npm run build`, deploy command `npx wrangler deploy -c trading-worker/wrangler.jsonc`, production branch `main`.
 
 ### Local development
 

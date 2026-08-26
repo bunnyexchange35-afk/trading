@@ -4,8 +4,8 @@
   "description": "Trading desk API (training programme). Live Coinbase market graphs and real currency pairs. Registration is invitation-only with institute-assigned codes and every wallet/order action requires sign-in. Admin and super admin control every order outcome from the backend.",
   "servers": {
     "cloudflare_worker": "https://mudrex-earn.<your-subdomain>.workers.dev",
-    "backend_origin": "https://<your-backend-origin>",
-    "note": "All /api/* paths work identically through the Cloudflare worker (worker proxies them to BACKEND_ORIGIN) or directly against the backend origin. Admin and super admin commands are backend-side only — no admin UI."
+    "backend_origin": "https://<your-backend-origin> (only for the optional Node/server.mjs deployment — the worker contains the full backend)",
+    "note": "Recommended: the single Cloudflare worker runs everything — SPA, live Coinbase markets, invitation-only registration, token sign-in, wallet, order engine and all admin/super admin commands. All /api/* paths work at the worker URL directly. Storage: STORE KV when bound, in-memory fallback otherwise. The Express backend (server.mjs) speaks the identical contract for local dev / self-hosting."
   },
   "environment": {
     "ADMIN_CODES": "Institute invitation codes, comma separated. Users can ONLY register with one of these. Default: MUDREXX-ADMIN,ADMIN-2024,ADMIN777,MEDRIX888,ADMIN — override in production.",
