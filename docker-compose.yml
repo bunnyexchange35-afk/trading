@@ -1,0 +1,17 @@
+services:
+  mudrex-earn:
+    build: .
+    container_name: mudrex-earn
+    ports:
+      - "8080:8080"
+    environment:
+      # Override on the command line: ADMIN_CODES="CODE1,CODE2" docker compose up -d --build
+      ADMIN_CODES: ${ADMIN_CODES:-please-change-these-codes}
+      PORT: 8080
+      NODE_ENV: production
+    volumes:
+      - mudrex-data:/app/server/data
+    restart: unless-stopped
+
+volumes:
+  mudrex-data:

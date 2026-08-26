@@ -46,6 +46,7 @@ Repo layout:
 | `server.mjs` | The Express **backend code** — all wallet/auth/order APIs |
 | `server/data/users.json` | Persistent user store (gitignored — mount a volume in prod) |
 | `trading-worker/` | Cloudflare Worker (SPA host + native market API + proxy) |
+| `Dockerfile`, `docker-compose.yml`, `.dockerignore` | One-command backend deploy (builds frontend, serves SPA + API) |
 | `trading-worker/wrangler.jsonc` | Worker config: `mudrex-earn`, assets `../dist`, SPA fallback |
 | `test/api.test.mjs` | 20 backend tests (`npm test`) |
 
@@ -165,6 +166,30 @@ ADMIN_CODES="YOUR-SECRET-CODES" PORT=8080 npm start
 ```
 
 App + API on `http://<host>:8080`. Works on Render / Railway / Fly.io / any VPS / Docker (`node:20`+ image, command `npm start`, expose `$PORT`, persist `server/data/`). Health check: `GET /api/health`.
+
+#### Docker (one command)
+
+A multi-stage `Dockerfile` (node:22-alpine) and `docker-compose.yml` are included — it builds the frontend, installs only production deps, serves SPA + API on `:8080`, persists users to the `mudrex-data` volume, and self-health-checks `/api/health`:
+
+```bash
+# one command — build + run with persistent storage
+ADMIN_CODES="YOUR-CODE1,YOUR-CODE2" docker compose up -d --build
+
+# verify
+curl http://localhost:8080/api/health
+```
+
+Or plain Docker / a platform that builds Dockerfiles (Cloud Run, Fly, Render, Railway):
+
+```bash
+docker build -t mudrex-earn .
+docker run -d --name mudrex-earn -p 8080:8080 \
+  -e ADMIN_CODES="YOUR-CODE1,YOUR-CODE2" \
+  -v mudrex-data:/app/server/data \
+  mudrex-earn
+```
+
+Notes: `PORT` is respected (platforms that inject it work as-is); user data lives at `/app/server/data` (declared `VOLUME`); admin codes default to a placeholder in compose — **always pass your own**.
 
 ### Option B — Cloudflare Worker (fast, global) + backend origin
 
