@@ -88,6 +88,8 @@ type AppState = {
   closeAuth: () => void;
   /** Registers (isNewUser) or logs in through the backend. Throws on failure (after notifying). */
   authenticate: (userProfile: AuthProfile, isNewUser?: boolean) => Promise<void>;
+  /** Re-syncs the signed-in user (and wallet) from the backend. */
+  refreshUser: (email?: string) => Promise<unknown>;
   signOut: () => void;
   notices: Notice[];
   notify: (title: string, message: string, tone?: Notice['tone']) => void;
@@ -102,6 +104,8 @@ type AppState = {
     currency: 'INR' | 'USDT';
     asset?: string;
     side?: 'up' | 'down';
+    durationSeconds?: number;
+    payoutPercent?: number;
   }) => Promise<boolean>;
   addStakingVault: (asset: string, amount: number, apy: number) => Promise<boolean>;
   claimDemoCredits: (amount?: number) => Promise<void>;
@@ -425,6 +429,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       currency: 'INR' | 'USDT';
       asset?: string;
       side?: 'up' | 'down';
+      durationSeconds?: number;
+      payoutPercent?: number;
     }) => {
       if (!user) return false;
       try {
@@ -435,6 +441,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           amount: order.amount,
           currency: order.currency,
           accountType: 'real',
+          durationSeconds: order.durationSeconds ?? 60,
+          payoutPercent: order.payoutPercent ?? 5,
         });
         if (!res?.success) throw new ApiError(res?.error || 'Order could not be placed.');
         await refreshFromServer(user.email);
@@ -539,6 +547,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       openAuth: setAuthMode,
       closeAuth: () => setAuthMode(null),
       authenticate,
+      refreshUser: refreshFromServer,
       signOut,
       notices,
       notify,

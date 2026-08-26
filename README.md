@@ -101,8 +101,11 @@ needed. Set it up in the Cloudflare dashboard:
    - **Create application -> Get started -> Import a repository**, selecting this
      repo and the `main` branch, or
    - For an existing Worker, open it -> **Settings -> Builds -> Connect**.
-2. Make sure the Worker name in the dashboard matches `trading` (the name
-   in `trading-worker/wrangler.jsonc`), or the build will fail.
+2. Make sure the Worker name in the dashboard matches `mudrex-earn` (the name
+   in `trading-worker/wrangler.jsonc`), or the build will fail. Note: the worker
+   was previously named `trading` — the first deploy under `mudrex-earn` creates
+   a new Worker (`mudrex-earn.<subdomain>.workers.dev`); delete or redirect the
+   old one if you had it deployed.
 3. In **Settings -> Build**, set:
    - **Build command**: `npm run build`
    - **Deploy command**: `npx wrangler deploy -c trading-worker/wrangler.jsonc`
@@ -115,11 +118,34 @@ needed. Set it up in the Cloudflare dashboard:
 
 Notes:
 
-- The backend can be connected via Cloudflare Worker **Service Bindings** (`services` in `trading-worker/wrangler.jsonc` bound to `BACKEND`), through the `BACKEND_ORIGIN` variable, or via KV `config:backend-url`.
+- The committed `trading-worker/wrangler.jsonc` is intentionally minimal (name,
+  `assets` SPA binding, observability). It has no backend wiring by default —
+  everything backend-related is optional and can be added in the dashboard
+  (**Settings -> Bindings / Variables & Secrets**) or appended to the config:
+  a **Service Binding** (`services` entry bound to `BACKEND`), the
+  `BACKEND_ORIGIN` var, or KV `config:backend-url`. Without any of these, the
+  worker still serves the SPA and the native `/api/markets`,
+  `/api/market/klines` and `/api/health` endpoints; other `/api/*` calls return
+  `503` with a setup hint.
 - API calls are same-origin (`/api/*`), so no CORS changes are needed when the
   worker proxies to the backend.
-- You can also set `BACKEND_ORIGIN` or service bindings in the Cloudflare dashboard under
-  **Settings -> Variables and Secrets** / **Settings -> Bindings**.
+- `not_found_handling: "single-page-application"` makes every non-asset path
+  (e.g. `/login`, `/dashboard`) serve `dist/index.html`, so client-side routing
+  works on hard refresh and direct links.
+
+## App Routes
+
+| Route | Page |
+| --- | --- |
+| `/` (also `/dashboard`) | Home / portfolio dashboard |
+| `/login` | Opens the sign-in modal (redirects to `/dashboard` when already signed in) |
+| `/trading` (also `/market`) | Live market desk — spot, futures, DeFi staking |
+| `/instant-order` (also `/instant order`) | Instant order desk & Flight Lab |
+| `/profile` | Profile & settings |
+| `/wallet`, `/deposit` | Wallet desk, deposit flows |
+| `/support`, `/community` | Support, community |
+| `/admin/users` | Admin users console |
+| `/a/:code`, `/s/:code` | V2 access / source link redemption |
 
 ## Environment Variables & Bindings
 

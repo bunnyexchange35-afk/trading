@@ -1,0 +1,115 @@
+{
+  "name": "mudrex-earn",
+  "version": "1.0.0",
+  "description": "Trading desk API (training programme). Live Coinbase market graphs and real currency pairs. Registration is invitation-only with institute-assigned codes and every wallet/order action requires sign-in. Admin and super admin control every order outcome from the backend.",
+  "servers": {
+    "cloudflare_worker": "https://mudrex-earn.<your-subdomain>.workers.dev",
+    "backend_origin": "https://<your-backend-origin> (only for the optional Node/server.mjs deployment — the worker contains the full backend)",
+    "note": "Recommended: the single Cloudflare worker runs everything — SPA, live Coinbase markets, invitation-only registration, token sign-in, wallet, order engine and all admin/super admin commands. All /api/* paths work at the worker URL directly. Storage: STORE KV when bound, in-memory fallback otherwise. The Express backend (server.mjs) speaks the identical contract for local dev / self-hosting."
+  },
+  "environment": {
+    "ADMIN_CODES": "Institute invitation codes, comma separated. Users can ONLY register with one of these. Default: MUDREXX-ADMIN,ADMIN-2024,ADMIN777,MEDRIX888,ADMIN — override in production.",
+    "SUPER_ADMIN_CODES": "Super admin codes (order control + wallet state control). Default: MUDREXX-SUPER,SUPER-2024 — override in production.",
+    "BACKEND_ORIGIN": "Worker variable pointing at the backend origin.",
+    "DATA_DIR": "Optional. Overrides the user-store directory (server/data)."
+  },
+  "auth": {
+    "condition_1_registration_is_invitation_only": {
+      "rule": "The ONLY valid registration codes are the institute-assigned codes (ADMIN_CODES / SUPER_ADMIN_CODES). User referral codes are NOT accepted, codes are never issued by the app, and there is no place to obtain one. A participant receives their code from the institute.",
+      "endpoint": "POST /api/auth/register",
+      "body": { "name": "Rahul Sharma", "email": "rahul@example.com", "phone": "+91 98765 43210", "preferredCurrency": "INR", "inviteCode": "<institute-assigned code>" },
+      "success_200": { "success": true, "message": "User registered successfully with ₹0.00 initial balance", "user": { "email": "rahul@example.com", "invitedBy": "ADMIN777", "invitedByType": "admin", "wallet": { "realBalance": 0, "demoBalance": 10000 } }, "token": "mx_<random>" },
+      "rejected_403": { "error": "Registration is by invitation only. Enter the code assigned to you." },
+      "on_reject": "Missing code, unknown code, or another user's referral code -> 403, no account created."
+    },
+    "condition_2_sign_in_required": {
+      "rule": "Every wallet / order / deposit / withdrawal / staking / profile call must carry the bearer token. A token only ever touches its own account.",
+      "header": "Authorization: Bearer <token>",
+      "token_source": "register response or POST /api/auth/login (login rotates the token, older token stops working)",
+      "protected_paths": ["/api/wallet/*", "/api/orders/*", "/api/deposit/*", "/api/withdraw/*", "/api/staking/*", "/api/user/*"],
+      "missing_token_401": { "error": "Sign in required. Sign up with an invitation code, then sign in and send Authorization: Bearer <token>." },
+      "other_account_403": { "error": "This session can only access its own account." },
+      "invalid_token_401": { "error": "Invalid or expired session token. Sign in again." }
+    },
+    "roles": {
+      "user": "Signed-in account. Trades, deposits, converts, views own wallet and orders only.",
+      "admin": "ADMIN_CODES holder. Controls every order (win/lose/cancel, currency, time, %) and views all users/orders.",
+      "super_admin": "SUPER_ADMIN_CODES holder. Everything an admin can do PLUS direct wallet state commands (deposit/credit/total/frozen adjustments)."
+    }
+  },
+  "endpoints": {
+    "public": {
+      "health": { "method": "GET", "path": "/api/health" },
+      "markets": { "method": "GET", "path": "/api/markets", "note": "32 assets, live Coinbase quotes, served natively by the worker" },
+      "klines": { "method": "GET", "path": "/api/market/klines?symbol=BTC&interval=1m", "intervals": ["1m", "5m", "15m", "1h"] },
+      "catalog": { "method": "GET", "path": "/api" },
+      "register": { "method": "POST", "path": "/api/auth/register", "see": "auth.condition_1_registration_is_invitation_only" },
+      "login": { "method": "POST", "path": "/api/auth/login", "body": { "email": "rahul@example.com" }, "returns": { "success": true, "user": {}, "token": "mx_<random>" } },
+      "me": { "method": "GET", "path": "/api/auth/me", "note": "No token -> { success:true, user:null, anonymous:true }; valid token -> the signed-in account; invalid token -> 401" }
+    },
+    "user_bearer_required": {
+      "profile_update": { "method": "PUT", "path": "/api/user/profile", "body": { "name": "...", "phone": "...", "preferredCurrency": "INR" } },
+      "order_create": {
+        "method": "POST", "path": "/api/orders/create",
+        "body": { "symbol": "BTC", "side": "up", "amount": 1000, "currency": "INR", "accountType": "real", "durationSeconds": 60, "payoutPercent": 5 },
+        "note": "amount up to 500%, duration 5-86400s. Real orders escrow INR/USDT; accountType 'demo' escrows practice credits. Entry price captured live. Order lands on the Instant Order page board.",
+        "returns": { "success": true, "orderId": "ord-...", "order": { "status": "open", "payoutPercent": 5, "durationSeconds": 60, "entryPrice": 116430.2 }, "wallet": { "totalBalance": 0, "frozenBalance": 0, "creditTotal": 0, "depositCredited": 0 } }
+      },
+      "order_list": { "method": "GET", "path": "/api/orders/list", "returns": "Every order for the signed-in user + wallet state; expired orders auto-settle against the live market move (UP wins if exit >= entry, DOWN wins if exit <= entry)" },
+      "order_status": { "method": "GET", "path": "/api/orders/status?orderId=...|email=..." },
+      "wallet_summary": { "method": "GET", "path": "/api/wallet/summary", "returns": { "realBalance": 0, "frozenBalance": 0, "demoBalance": 0, "depositCredited": 0, "creditTotal": 0, "totalBalance": 0, "frozenTotal": 0, "openOrders": 0 } },
+      "wallet_transactions": { "method": "GET", "path": "/api/wallet/transactions" },
+      "wallet_frozen": { "method": "GET", "path": "/api/wallet/frozen" },
+      "frozen_release": { "method": "POST", "path": "/api/wallet/frozen/release", "body": { "id": "ord-..." } },
+      "deposit_submit": { "method": "POST", "path": "/api/deposit/submit", "body": { "amount": 5000, "rail": "inr|usdt", "method": "upi", "reference": "UPI-884920" } },
+      "deposit_approve": { "method": "POST", "path": "/api/wallet/deposit/approve", "body": { "id": "dep-..." } },
+      "withdraw_submit": { "method": "POST", "path": "/api/withdraw/submit", "body": { "amount": 1000, "destination": "user@bank" } },
+      "convert_demo": { "method": "POST", "path": "/api/wallet/convert-demo", "body": { "demoCredits": 2000 }, "note": "10 credits = 1 INR" },
+      "claim_demo": { "method": "POST", "path": "/api/wallet/claim-demo", "body": { "amount": 5000 } },
+      "link_demo": { "method": "POST", "path": "/api/wallet/link-demo", "body": { "linked": true } },
+      "demo_adjust": { "method": "POST", "path": "/api/wallet/demo/adjust", "body": { "delta": -250 } },
+      "stake": { "method": "POST", "path": "/api/staking/stake", "body": { "asset": "ETH", "amount": 2000, "apy": 4.7 } }
+    },
+    "admin_and_super_admin_code_auth": {
+      "note": "Authenticate with the code in the body/query — no token needed. These are the backend control commands.",
+      "role_check": { "method": "GET", "path": "/api/admin/role?code=<code>", "returns": { "success": true, "role": "admin | super" } },
+      "registered_users": { "method": "GET", "path": "/api/admin/users?code=<code>", "note": "Full user directory" },
+      "users_by_invitation_code": {
+        "method": "GET", "path": "/api/admin/invited-users?code=<admin-code>&inviteCode=<optional specific code>",
+        "note": "Every account that registered through an invitation code; filter to one specific institute code with inviteCode. Returns balances, open orders count and a summary (byAdminCode / byReferral / combinedRealBalance)."
+      },
+      "all_orders": { "method": "GET", "path": "/api/admin/orders/all?code=<code>", "returns": "Every order across all users with userEmail, live status, %, time, currency" },
+      "order_control": {
+        "method": "POST", "path": "/api/admin/orders/control",
+        "body": { "code": "<code>", "orderId": "ord-...", "action": "win | lose | cancel", "percent": 85 },
+        "note": "Force any order's outcome ANYTIME (before or after expiry). percent overrides the payout % at settle time. win = stake + % returned; lose = stake consumed; cancel = refund.",
+        "returns": { "success": true, "role": "admin | super", "order": { "status": "won", "payout": 540 }, "wallet": {} }
+      },
+      "order_update": {
+        "method": "POST", "path": "/api/admin/orders/update",
+        "body": { "code": "<code>", "orderId": "ord-...", "currency": "INR | USDT", "durationSeconds": 120, "payoutPercent": 50 },
+        "note": "Change currency, time or payout % of an open order ANYTIME. All fields optional. Currency change moves the escrow between the INR and USDT books."
+      },
+      "wallet_adjust_super_admin_only": {
+        "method": "POST", "path": "/api/admin/wallet/adjust",
+        "body": { "code": "<super code>", "email": "user@example.com", "field": "real | realUsdt | frozen | frozenUsdt | demo", "delta": 10000 },
+        "note": "Direct wallet state command (deposit / credit / total / frozen). Never below zero. Shows in the user ledger as a neutral 'Balance Sync' entry. Admin (non-super) codes -> 403."
+      }
+    }
+  },
+  "order_lifecycle": [
+    "1. Sign up with the institute-assigned invitation code -> account starts at ₹0.00 + 10,000 practice credits (register returns a bearer token).",
+    "2. Sign in (or use the register token); every wallet/order call sends Authorization: Bearer <token>.",
+    "3. Order placed from the Instant Order page: escrow (INR/USDT or credits), entry price captured live, order appears on the live board with %, countdown and wallet state (deposit / credit / total / frozen).",
+    "4. At expiry the order auto-settles against the real market move; an admin or super admin can force win / lose / cancel or change currency, time and % ANYTIME — the admin decision is final and instant.",
+    "5. Wins, losses, refunds and admin adjustments immediately update the wallet state and the transaction ledger."
+  ],
+  "status_codes": {
+    "200": "ok",
+    "400": "bad request (validation)",
+    "401": "sign-in required / invalid token",
+    "403": "forbidden (no invitation code, unknown code, wrong account, non-super wallet command)",
+    "404": "not found",
+    "409": "order already settled"
+  }
+}

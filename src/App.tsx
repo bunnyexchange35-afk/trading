@@ -64,15 +64,51 @@ function AccessLinkPage({ kind }: { kind: 'access' | 'source' }) {
   );
 }
 
+function LoginPage() {
+  const { user, openAuth } = useApp();
+
+  useEffect(() => {
+    if (!user) openAuth('signin');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (user) return <Navigate to="/dashboard" replace />;
+
+  return (
+    <main className="access-link-page">
+      <p>Sign in to continue to your desk.</p>
+      <button type="button" className="btn btn-purple" onClick={() => openAuth('signin')}>
+        Open sign in
+      </button>
+    </main>
+  );
+}
+
+function NormalizeRoute() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  useEffect(() => {
+    const path = decodeURI(location.pathname).toLowerCase();
+    if (path === '/instant order' || path === '/instant%20order') {
+      navigate('/instant-order', { replace: true });
+    }
+  }, [location.pathname, navigate]);
+  return null;
+}
+
 function AppRoutes() {
   return (
     <>
       <ScrollToTop />
+      <NormalizeRoute />
       <EntryExperience />
       <SiteHeader />
       <Routes>
         <Route path="/" element={<Home />} />
+        <Route path="/dashboard" element={<Home />} />
+        <Route path="/trading" element={<Market />} />
         <Route path="/market" element={<Market />} />
+        <Route path="/login" element={<LoginPage />} />
         <Route path="/instant-order" element={<InstantOrder />} />
         <Route path="/deposit" element={<Deposit />} />
         <Route path="/profile" element={<ProfilePage />} />

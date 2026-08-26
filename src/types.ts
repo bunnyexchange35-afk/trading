@@ -70,3 +70,27 @@ export type Session = {
   email: string;
   token: string;
 };
+
+/** Live order record shown on the Instant Order page board. */
+export type TradeOrder = {
+  id: string;
+  symbol: string;
+  side: 'up' | 'down';
+  amount: number;
+  currency: 'INR' | 'USDT';
+  accountType: 'real' | 'demo';
+  status: 'open' | 'won' | 'lost' | 'cancelled';
+  payoutPercent: number;
+  durationSeconds: number;
+  createdAt: number;
+  expiresAt: number;
+  entryPrice: number;
+  exitPrice?: number;
+  payout?: number;
+  profit?: number;
+  settledPercent?: number;
+  settledAt?: string;
+  settledBy?: string;
+  userEmail?: string;
+  userName?: string;
+};

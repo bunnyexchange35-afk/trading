@@ -1,0 +1,12 @@
+node_modules
+dist
+server/data
+test
+trading-worker
+.git
+.gitignore
+.env
+.env.*
+*.md
+Dockerfile
+docker-compose.yml
