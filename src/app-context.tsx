@@ -4,6 +4,7 @@ import {
   ApiError,
   type AuthSnapshot,
   type BackendContract,
+  SESSION_EXPIRED_EVENT,
   adjustDemoBalance,
   apiMessage,
   approveDepositItem,
@@ -21,6 +22,7 @@ import {
   setDemoLinkStatus,
   stakeInVault,
   submitDeposit,
+  updateProfile,
 } from './api';
 import type { AuthProfile, Session, User, UserWallet } from './types';
 
@@ -69,6 +71,16 @@ function sanitizeUser(data: unknown): User | null {
     inviteCode: typeof raw.inviteCode === 'string' ? raw.inviteCode : '',
     invitedBy: typeof raw.invitedBy === 'string' ? raw.invitedBy : '',
     invitedByType: raw.invitedByType === 'admin' || raw.invitedByType === 'user' ? raw.invitedByType : '',
+    id: typeof raw.id === 'string' ? raw.id : '',
+    username: typeof raw.username === 'string' ? raw.username : '',
+    status: typeof raw.status === 'string' ? raw.status : 'active',
+    category: typeof raw.category === 'string' ? raw.category : '',
+    creditScore:
+      raw.creditScore && typeof raw.creditScore === 'object' && typeof (raw.creditScore as { score?: unknown }).score === 'number'
+        ? (raw.creditScore as User['creditScore'])
+        : undefined,
+    adminUserCode: typeof raw.adminUserCode === 'string' ? raw.adminUserCode : '',
+    lastActivityAt: typeof raw.lastActivityAt === 'string' ? raw.lastActivityAt : '',
     wallet,
   };
 }
@@ -90,6 +102,8 @@ type AppState = {
   authenticate: (userProfile: AuthProfile, isNewUser?: boolean) => Promise<void>;
   /** Re-syncs the signed-in user (and wallet) from the backend. */
   refreshUser: (email?: string) => Promise<unknown>;
+  /** Saves editable profile fields through the backend and re-syncs. */
+  saveProfile: (data: { name?: string; phone?: string; preferredCurrency?: 'INR' | 'USDT' }) => Promise<boolean>;
   signOut: () => void;
   notices: Notice[];
   notify: (title: string, message: string, tone?: Notice['tone']) => void;
@@ -346,6 +360,40 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSession(null);
   }, []);
 
+  // Expired / invalid sessions: clear the local session once and inform the
+  // student. No automatic re-probe here — that keeps 401 handling loop-free.
+  useEffect(() => {
+    const onSessionExpired = () => {
+      setUser((current) => {
+        if (current) {
+          notify('Session expired', 'Your session has expired. Please sign in again.', 'warning');
+          return null;
+        }
+        return current;
+      });
+      setSession(null);
+    };
+    window.addEventListener(SESSION_EXPIRED_EVENT, onSessionExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onSessionExpired);
+  }, [notify]);
+
+  const saveProfile = useCallback(
+    async (data: { name?: string; phone?: string; preferredCurrency?: 'INR' | 'USDT' }) => {
+      if (!user) return false;
+      try {
+        const res = await updateProfile({ email: user.email, ...data });
+        if (!res?.success) throw new ApiError(res?.error || 'Profile update failed on the backend.');
+        await refreshFromServer(user.email);
+        notify('Profile saved', res.message || 'Your profile preferences were updated on the backend.', 'success');
+        return true;
+      } catch (error) {
+        notify('Profile update failed', apiMessage(error), 'warning');
+        return false;
+      }
+    },
+    [user, refreshFromServer, notify]
+  );
+
   const convertDemoToReal = useCallback(
     async (demoCredits: number) => {
       if (!user) {
@@ -548,6 +596,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       closeAuth: () => setAuthMode(null),
       authenticate,
       refreshUser: refreshFromServer,
+      saveProfile,
       signOut,
       notices,
       notify,
@@ -574,6 +623,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       redeemAccess,
       authMode,
       authenticate,
+      saveProfile,
       signOut,
       notices,
       notify,

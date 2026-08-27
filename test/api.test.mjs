@@ -584,4 +584,162 @@ describe('Mudrexx Earn Backend Test Suite', () => {
       assert.equal(negative.status, 400);
     });
   });
+
+  describe('Student Desk Extensions (config, tasks, credit, support, nova, documents)', () => {
+    const testEmail = `deskuser_${Date.now()}@mudrexx.com`;
+    let token;
+
+    before(async () => {
+      const { data } = await registerAccount(testEmail, 'Desk Student', 'ADMIN777');
+      token = data.token;
+    });
+
+    test('GET /api/order/config returns backend-controlled order configuration', async () => {
+      const res = await fetch(`${BASE_URL}/api/order/config`);
+      const data = await res.json();
+      assert.equal(data.success, true);
+      assert.ok(Array.isArray(data.config.assets) && data.config.assets.length > 0);
+      assert.ok(data.config.currencies.some((c) => c.code === 'INR'));
+      assert.ok(Array.isArray(data.config.durations) && data.config.durations.length > 0);
+      assert.ok(Array.isArray(data.config.payoutPercents));
+    });
+
+    test('split order config endpoints respond', async () => {
+      const [assets, currencies, durations] = await Promise.all([
+        fetch(`${BASE_URL}/api/order/assets`).then((r) => r.json()),
+        fetch(`${BASE_URL}/api/order/currencies`).then((r) => r.json()),
+        fetch(`${BASE_URL}/api/order/durations`).then((r) => r.json()),
+      ]);
+      assert.ok(assets.assets.length > 0);
+      assert.ok(currencies.currencies.length > 0);
+      assert.ok(durations.durations.length > 0);
+    });
+
+    test('GET /api/tasks returns only this student\'s tasks with summary', async () => {
+      const res = await fetch(`${BASE_URL}/api/tasks`, { headers: authHeaders(token) });
+      const data = await res.json();
+      assert.equal(data.success, true);
+      assert.ok(data.tasks.length > 0);
+      assert.ok(data.tasks.every((task) => typeof task.title === 'string'));
+      assert.ok(data.summary && data.summary.total === data.tasks.length);
+      const unauth = await fetch(`${BASE_URL}/api/tasks`);
+      assert.equal(unauth.status, 401);
+    });
+
+    test('credit score endpoints return backend-computed score and history', async () => {
+      const score = await fetch(`${BASE_URL}/api/credit-score`, { headers: authHeaders(token) }).then((r) => r.json());
+      assert.equal(score.success, true);
+      assert.ok(score.creditScore.score >= 300 && score.creditScore.score <= 900);
+      assert.ok(['excellent', 'good', 'fair', 'poor'].includes(score.creditScore.status));
+      const history = await fetch(`${BASE_URL}/api/credit-score/history`, { headers: authHeaders(token) }).then((r) => r.json());
+      assert.equal(history.success, true);
+      assert.ok(history.history.length >= 1);
+    });
+
+    test('GET /api/user/account returns the account snapshot with admin relationship', async () => {
+      const res = await fetch(`${BASE_URL}/api/user/account`, { headers: authHeaders(token) });
+      const data = await res.json();
+      assert.equal(data.success, true);
+      assert.ok(data.account.id);
+      assert.ok(data.account.username);
+      assert.equal(data.account.category, 'New');
+      assert.equal(data.account.adminUserCode, 'ADMIN777');
+      assert.ok(data.account.createdAt);
+      assert.ok(data.account.lastActivityAt);
+    });
+
+    test('support tickets can be created and listed; withdrawal requests become tickets', async () => {
+      const created = await fetch(`${BASE_URL}/api/support/tickets`, {
+        method: 'POST',
+        headers: authHeaders(token),
+        body: JSON.stringify({ category: 'Wallet', subject: 'Balance question', message: 'Why is my deposit pending?' }),
+      });
+      assert.equal(created.status, 201);
+      const createdBody = await created.json();
+      assert.equal(createdBody.ticket.category, 'Wallet');
+
+      const badCategory = await fetch(`${BASE_URL}/api/support/tickets`, {
+        method: 'POST',
+        headers: authHeaders(token),
+        body: JSON.stringify({ category: 'Nonsense', message: 'x' }),
+      });
+      assert.equal(badCategory.status, 422);
+
+      const withdrawal = await fetch(`${BASE_URL}/api/withdrawal/support`, {
+        method: 'POST',
+        headers: authHeaders(token),
+        body: JSON.stringify({ currency: 'INR', amount: 100 }),
+      });
+      assert.equal(withdrawal.status, 409); // exceeds available balance (₹0)
+
+      const list = await fetch(`${BASE_URL}/api/support/tickets`, { headers: authHeaders(token) }).then((r) => r.json());
+      assert.equal(list.success, true);
+      assert.equal(list.tickets.length, 1);
+      assert.deepEqual(list.categories, ['Withdrawal', 'Account', 'Order', 'Wallet', 'Documents', 'Other']);
+    });
+
+    test('GET /api/notifications returns student-scoped notifications', async () => {
+      const data = await fetch(`${BASE_URL}/api/notifications`, { headers: authHeaders(token) }).then((r) => r.json());
+      assert.equal(data.success, true);
+      assert.ok(Array.isArray(data.notifications));
+    });
+
+    test('document catalog and invoice come from the backend', async () => {
+      const catalog = await fetch(`${BASE_URL}/api/documents`, { headers: authHeaders(token) }).then((r) => r.json());
+      assert.equal(catalog.success, true);
+      assert.ok(catalog.documents.some((doc) => doc.type === 'statement'));
+      assert.ok(catalog.documents.some((doc) => doc.type === 'invoice'));
+
+      const invoice = await fetch(`${BASE_URL}/api/account/invoice?email=${encodeURIComponent(testEmail)}`, {
+        headers: authHeaders(token),
+      }).then((r) => r.json());
+      assert.equal(invoice.success, true);
+      assert.ok(invoice.invoice.invoiceId.startsWith('INV-'));
+      assert.ok(Array.isArray(invoice.invoice.items));
+      assert.equal(invoice.invoice.totals.platformFee, 0);
+    });
+
+    test('NOVA status and chat answer from authoritative data', async () => {
+      const status = await fetch(`${BASE_URL}/api/nova/status`).then((r) => r.json());
+      assert.equal(status.success, true);
+      assert.equal(status.nova.online, true);
+      assert.ok(status.nova.topics.includes('markets'));
+
+      const chat = await fetch(`${BASE_URL}/api/nova/chat`, {
+        method: 'POST',
+        headers: authHeaders(token),
+        body: JSON.stringify({ message: 'What is my frozen amount?' }),
+      }).then((r) => r.json());
+      assert.equal(chat.success, true);
+      assert.ok(chat.reply.length > 10);
+      assert.ok(chat.sources.includes('wallet'));
+
+      const empty = await fetch(`${BASE_URL}/api/nova/chat`, {
+        method: 'POST',
+        headers: authHeaders(token),
+        body: JSON.stringify({ message: '   ' }),
+      });
+      assert.equal(empty.status, 422);
+    });
+
+    test('market detail/ohlcv/analysis answer with status or honest unavailability', async () => {
+      const detail = await fetch(`${BASE_URL}/api/markets/BTC`).then((r) => r.json());
+      assert.equal(detail.success, true);
+      assert.ok(detail.market.price > 0);
+      assert.ok(['live', 'delayed', 'unavailable'].includes(detail.market.status));
+
+      const unknown = await fetch(`${BASE_URL}/api/markets/NOPE123`);
+      assert.equal(unknown.status, 404);
+
+      const analysis = await fetch(`${BASE_URL}/api/markets/BTC/analysis`);
+      const analysisBody = await analysis.json();
+      assert.ok(analysis.status === 200 || analysis.status === 503);
+      if (analysis.status === 200) {
+        assert.ok(analysisBody.analysis.rsi14 !== undefined);
+        assert.ok(analysisBody.analysis.support <= analysisBody.analysis.resistance);
+      } else {
+        assert.equal(analysisBody.success, false);
+      }
+    });
+  });
 });

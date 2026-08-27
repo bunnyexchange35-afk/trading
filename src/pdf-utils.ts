@@ -5,7 +5,7 @@
 
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
-import type { AccountStatement, AccountProof, AccountAgreement } from './api';
+import type { AccountStatement, AccountProof, AccountAgreement, AccountInvoice } from './api';
 
 // Extend jsPDF type to include autoTable
 declare module 'jspdf' {
@@ -362,11 +362,11 @@ export function generateProofPDF(proof: AccountProof): jsPDF {
   return doc;
 }
 
-export function generateAgreementPDF(agreement: AccountAgreement): jsPDF {
+export function generateAgreementPDF(agreement: AccountAgreement, titleOverride?: string): jsPDF {
   const doc = new jsPDF();
-  
+
   // Header
-  addHeader(doc, 'Account Agreement', `Agreement ID: ${agreement.agreementId}`);
+  addHeader(doc, titleOverride || 'Account Agreement', `Agreement ID: ${agreement.agreementId}`);
   
   let y = 55;
   
@@ -483,6 +483,109 @@ export function generateAgreementPDF(agreement: AccountAgreement): jsPDF {
     addFooter(doc, i);
   }
   
+  return doc;
+}
+
+/** Invoice PDF — every figure comes from the backend invoice payload. */
+export function generateInvoicePDF(invoice: AccountInvoice): jsPDF {
+  const doc = new jsPDF();
+
+  addHeader(doc, 'Invoice', `Invoice ID: ${invoice.invoiceId}`);
+
+  let y = 55;
+
+  // Invoice information
+  y = addSectionTitle(doc, 'Invoice Information', y);
+  y = addKeyValue(doc, 'Invoice ID:', invoice.invoiceId, 15, y);
+  y = addKeyValue(doc, 'Issued At:', new Date(invoice.issuedAt).toLocaleString(), 15, y);
+  y = addKeyValue(doc, 'Period:', `${new Date(invoice.periodStart).toLocaleDateString()} – ${new Date(invoice.periodEnd).toLocaleDateString()}`, 15, y);
+
+  y += 5;
+
+  // Bill To
+  y = addSectionTitle(doc, 'Bill To', y);
+  y = addKeyValue(doc, 'Name:', invoice.billTo.name, 15, y);
+  y = addKeyValue(doc, 'Email:', invoice.billTo.email, 15, y);
+  if (invoice.billTo.phone) y = addKeyValue(doc, 'Phone:', invoice.billTo.phone, 15, y);
+  y = addKeyValue(doc, 'User ID:', invoice.billTo.userId || '—', 15, y);
+  y = addKeyValue(doc, 'Invite Code:', invoice.billTo.inviteCode || '—', 15, y);
+
+  y += 5;
+
+  // Line items
+  y = addSectionTitle(doc, 'Line Items', y);
+
+  if (invoice.items.length === 0) {
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(LIGHT_TEXT_COLOR);
+    doc.text('No credited funds were recorded in this period.', 15, y);
+    y += 10;
+  } else {
+    doc.autoTable({
+      startY: y,
+      head: [['#', 'Description', 'Date', 'Amount']],
+      body: invoice.items.map((item) => [
+        String(item.position),
+        item.description,
+        String(item.date),
+        `${item.currency === 'USDT' ? '₮ ' : '₹ '}${item.amount.toLocaleString('en-IN')}`,
+      ]),
+      theme: 'striped',
+      headStyles: { fillColor: PRIMARY_COLOR, textColor: 255 },
+      styles: { fontSize: 8 },
+      margin: { left: 15, right: 15 },
+    });
+    y = (doc as any).lastAutoTable.finalY + 12;
+  }
+
+  // Totals
+  if (y > 240) {
+    addFooter(doc, doc.getNumberOfPages());
+    doc.addPage();
+    y = 20;
+  }
+  y = addSectionTitle(doc, 'Totals', y);
+  doc.autoTable({
+    startY: y,
+    head: [['Field', 'Value']],
+    body: [
+      ['Subtotal (INR)', `₹ ${invoice.totals.subtotalInr.toLocaleString('en-IN')}`],
+      ['Subtotal (USDT)', `₮ ${invoice.totals.subtotalUsdt.toLocaleString('en-IN')}`],
+      ['Platform Fee', `₹ ${invoice.totals.platformFee.toLocaleString('en-IN')}`],
+      ['Tax', `₹ ${invoice.totals.tax.toLocaleString('en-IN')}`],
+      ['Total (INR)', `₹ ${invoice.totals.totalInr.toLocaleString('en-IN')}`],
+      ['Balance Due', `₹ ${invoice.totals.balanceDue.toLocaleString('en-IN')}`],
+    ],
+    theme: 'grid',
+    headStyles: { fillColor: ACCENT_COLOR, textColor: 255 },
+    styles: { fontSize: 9 },
+    margin: { left: 15, right: 15 },
+  });
+  y = (doc as any).lastAutoTable.finalY + 10;
+
+  // Notes
+  if (y > 235) {
+    addFooter(doc, doc.getNumberOfPages());
+    doc.addPage();
+    y = 20;
+  }
+  doc.setFillColor('#eef2ff');
+  doc.roundedRect(15, y, 180, 22, 3, 3, 'F');
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(SECONDARY_COLOR);
+  doc.text('NOTES', 20, y + 6);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  const noteLines = doc.splitTextToSize(invoice.notes, 170);
+  doc.text(noteLines, 20, y + 11);
+
+  for (let i = 1; i <= doc.getNumberOfPages(); i++) {
+    doc.setPage(i);
+    addFooter(doc, i);
+  }
+
   return doc;
 }
 
