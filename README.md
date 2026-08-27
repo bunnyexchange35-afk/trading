@@ -14,7 +14,7 @@ A responsive crypto market, wallet desk, and practice-trading web experience bui
   - Demo-to-Real profile link status indicator and practice credit top-ups.
 - **Persistent Sessions**:
   - Safe session persistence in `localStorage`. Logged-in users are never repeatedly prompted for login when navigating or taking actions.
-- **Home Landing Page**: With a 10-second exchange-style launch animation and live portfolio overview.
+- **Home Landing Page**: Instant-loading (no splash/intro) with live portfolio overview.
 - **Live Market Desk**: Spot, Futures, and DeFi Staking tabs with live Coinbase public market feeds across 32 assets, INR/USDT price views, category filters, and A-tier flexible + B-tier locked 30-day staking vaults.
 - **Instant Order Desk & Flight Lab**: Live chart scenarios, buy up / buy down controls, and multiplier mini-game.
 - **Deposit Experience**: UPI / Bank transfer (INR) and TRC20 (USDT) funding flows recorded in the Frozen Amount section.

@@ -129,6 +129,42 @@ no longer fires on anything loaded by a student page.
   component-scoped countdown/intro ticks. Every interval/listener/observer
   added by this work is cleaned up in its effect teardown.
 
+## 5b. Round 2 — animation removal, static theme, response-rate work
+
+The second optimization pass removed every decorative animation outright
+(instead of just gating it) and cut network response size:
+
+**Frontend**
+- `theme-animation.css` (2,597 lines: animated starfield, nebulae with
+  `blur(70px)` + `mix-blend-mode`, brand shimmer, hero/CTA pulses, card
+  floats, entrance stagger) is **deleted**. Replacement `theme.css` is the
+  same customised lime-on-near-black identity, fully static — the only
+  keyframes left are the functional `.spin` loader and the route-fallback
+  spinner. Zero continuous repaint/GPU work remains on any page.
+- The 10-second `EntryExperience` launch overlay and its "watch intro"
+  replay are removed — first visit renders the desk immediately.
+  The `SpaceBackdrop` star/nebula DOM layer is gone with it.
+- `installMotionGovernor` (`perf.ts`) retired — there is no motion left to
+  govern; `useSmartPolling`/`useInView` are unchanged.
+- Idle route prefetch trimmed to Market + InstantOrder only, so the jsPDF
+  stack is never downloaded unless a PDF is actually requested.
+- Google Fonts load is non-render-blocking (`media="print"` swap +
+  `<noscript>` fallback): first paint no longer waits on a third-party
+  round trip.
+
+**Backend (`server.mjs`)**
+- `compression` middleware (gzip/deflate, level 6, ≥512 B): CSS ships
+  **162 kB → 33 kB (−80 %)**, main JS **97 kB → 27.6 kB (−72 %)**,
+  `/api/markets` JSON **6.6 kB → 2.0 kB (−70 %)**.
+- `/assets/*` (content-hashed by Vite) now served with
+  `Cache-Control: public, max-age=31536000, immutable`; the HTML shell is
+  `no-cache` so deploys are picked up instantly.
+
+**Resulting sizes**: startup CSS 188.2 kB (39.3 gz) → **162.5 kB (33.1 gz)**;
+main JS chunk 103.9 kB (29.4 gz) → **96.9 kB (27.6 gz)**; all 46 backend
+tests still pass.
+
+
 ## 6. On-device test plan (for Android/iPhone verification)
 
 1. Chrome remote DevTools → Performance tab, 4× CPU throttle: load
