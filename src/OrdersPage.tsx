@@ -32,6 +32,8 @@ const statusMeta: Record<string, { label: string; className: string; icon: JSX.E
 
 type Filter = 'all' | 'open' | 'won' | 'lost' | 'cancelled';
 
+const ORDERS_PAGE_SIZE = 25;
+
 export default function OrdersPage() {
   const { user, openAuth } = useApp();
   const [orders, setOrders] = useState<TradeOrder[]>([]);
@@ -39,6 +41,9 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
+  // Limited result sets: the history is loaded once on page entry and
+  // rendered in pages — no repeated full reloads while browsing.
+  const [visibleCount, setVisibleCount] = useState(ORDERS_PAGE_SIZE);
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -89,6 +94,7 @@ export default function OrdersPage() {
   }
 
   const filtered = filter === 'all' ? orders : orders.filter((order) => order.status === filter);
+  const paged = filtered.slice(0, visibleCount);
   const wonCount = orders.filter((order) => order.status === 'won').length;
   const lostCount = orders.filter((order) => order.status === 'lost').length;
   const openCount = orders.filter((order) => order.status === 'open').length;
@@ -124,7 +130,10 @@ export default function OrdersPage() {
                 key={value}
                 type="button"
                 className={filter === value ? 'active' : ''}
-                onClick={() => setFilter(value)}
+                onClick={() => {
+                  setFilter(value);
+                  setVisibleCount(ORDERS_PAGE_SIZE);
+                }}
               >
                 {value === 'all' ? 'All' : statusMeta[value].label}
               </button>
@@ -151,6 +160,7 @@ export default function OrdersPage() {
 
         {filtered.length > 0 && (
           <div className="oh-table">
+
             <div className="oh-row oh-head">
               <span>Order</span>
               <span>Direction</span>
@@ -162,7 +172,7 @@ export default function OrdersPage() {
               <span>Status</span>
               <span>Settled at</span>
             </div>
-            {filtered.map((order) => {
+            {paged.map((order) => {
               const meta = statusMeta[order.status] ?? statusMeta.open;
               const isReal = order.accountType === 'real';
               const currencySign = isReal ? sign(order.currency) : '';
@@ -212,6 +222,15 @@ export default function OrdersPage() {
                 </div>
               );
             })}
+            {filtered.length > paged.length && (
+              <button
+                type="button"
+                className="btn btn-soft orders-more"
+                onClick={() => setVisibleCount((count) => count + ORDERS_PAGE_SIZE)}
+              >
+                Show {Math.min(ORDERS_PAGE_SIZE, filtered.length - paged.length)} more orders
+              </button>
+            )}
           </div>
         )}
 

@@ -34,13 +34,19 @@ import {
 import type { CreditSnapshot } from './types';
 import { INR_RATE, money } from './data';
 import { useMarket } from './market-context';
-import {
-  generateStatementPDF,
-  generateProofPDF,
-  generateAgreementPDF,
-  generateInvoicePDF,
-  downloadPDF,
-} from './pdf-utils';
+import { useSmartPolling } from './perf';
+/**
+ * PDF utilities are loaded on demand — jsPDF (+autotable, +html2canvas) is
+ * several hundred KB and must never sit in the startup chunk. The dynamic
+ * import runs on the first "Generate PDF" click and is memoized, so
+ * re-downloads reuse the already-loaded module. PDF code never executes
+ * during page initialization.
+ */
+let pdfUtilsPromise: Promise<typeof import('./pdf-utils')> | null = null;
+function loadPdfUtils() {
+  if (!pdfUtilsPromise) pdfUtilsPromise = import('./pdf-utils');
+  return pdfUtilsPromise;
+}
 
 const TELEGRAM_URL = import.meta.env.VITE_TELEGRAM_URL || 'https://t.me/MEDRIXEARN';
 
@@ -153,7 +159,7 @@ export function ProfilePage() {
     return () => {
       active = false;
     };
-  }, [user, user?.name, user?.phone, user?.preferredCurrency]);
+  }, [user?.email, user?.name, user?.phone, user?.preferredCurrency]);
 
   const copyValue = async (label: string, value?: string) => {
     if (!value) return;
@@ -396,7 +402,10 @@ export function WalletPage() {
     return () => {
       active = false;
     };
-  }, [user, user?.wallet.realBalance, user?.wallet.frozenBalance, user?.wallet.demoBalance, user?.wallet.realUsdtBalance, user?.wallet.frozenUsdtBalance]);
+    // Deliberately keyed on the *balance fields*, not the whole user object:
+    // the summary refetches exactly once after each wallet mutation (order,
+    // settlement, conversion, deposit) and never on profile-only updates.
+  }, [user?.email, user?.wallet.realBalance, user?.wallet.frozenBalance, user?.wallet.demoBalance, user?.wallet.realUsdtBalance, user?.wallet.frozenUsdtBalance]);
 
   // Credit score & status for the wallet header (backend-computed).
   useEffect(() => {
@@ -1115,9 +1124,9 @@ export function SupportPage() {
     'How can I secure my account?',
   ];
 
-  const loadTickets = useCallback(async () => {
+  const loadTickets = useCallback(async (quiet = false) => {
     if (!user) return;
-    setLoadingTickets(true);
+    if (!quiet) setLoadingTickets(true);
     setTicketsError('');
     try {
       const response = await getSupportTickets();
@@ -1127,15 +1136,20 @@ export function SupportPage() {
       setTickets(response.tickets);
       if (response.categories?.length) setCategories(response.categories);
     } catch (error) {
-      setTicketsError(apiMessage(error));
+      if (!quiet) setTicketsError(apiMessage(error));
     } finally {
-      setLoadingTickets(false);
+      if (!quiet) setLoadingTickets(false);
     }
   }, [user]);
 
   useEffect(() => {
     void loadTickets();
   }, [loadTickets]);
+
+  // Support stays "refresh on focus": while this page is open tickets are
+  // re-checked at most once every two minutes — never while the tab is
+  // hidden or the browser is offline (useSmartPolling handles the gating).
+  useSmartPolling(() => loadTickets(true), { intervalMs: 120_000, enabled: Boolean(user) });
 
   const submitTicket = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1522,8 +1536,8 @@ function AccountDocumentsSection() {
       const response = await getAccountInvoice(user.email);
       if (response.success && response.invoice) {
         setInvoice(response.invoice);
-        const doc = generateInvoicePDF(response.invoice);
-        downloadPDF(doc, `invoice-${response.invoice.invoiceId}.pdf`);
+        const { generateInvoicePDF, downloadPDF } = await loadPdfUtils();
+        downloadPDF(generateInvoicePDF(response.invoice), `invoice-${response.invoice.invoiceId}.pdf`);
         notify('Invoice Generated', 'Your invoice has been downloaded as PDF.', 'success');
       } else {
         notify('Error', response.error || 'Failed to generate invoice', 'warning');
@@ -1541,8 +1555,8 @@ function AccountDocumentsSection() {
     try {
       const response = await getAccountAgreement(user.email);
       if (response.success && response.agreement) {
-        const doc = generateAgreementPDF(response.agreement, 'Agreement / Payout Terms');
-        downloadPDF(doc, `payout-agreement-${response.agreement.agreementId}.pdf`);
+        const { generateAgreementPDF, downloadPDF } = await loadPdfUtils();
+        downloadPDF(generateAgreementPDF(response.agreement, 'Agreement / Payout Terms'), `payout-agreement-${response.agreement.agreementId}.pdf`);
         notify('Payout Terms Generated', 'Your payout agreement has been downloaded as PDF.', 'success');
       } else {
         notify('Error', response.error || 'Failed to generate payout agreement', 'warning');
@@ -1561,8 +1575,8 @@ function AccountDocumentsSection() {
       const response = await getAccountStatement(user.email);
       if (response.success && response.statement) {
         setStatement(response.statement);
-        const doc = generateStatementPDF(response.statement);
-        downloadPDF(doc, `account-statement-${statement?.statementId || Date.now()}.pdf`);
+        const { generateStatementPDF, downloadPDF } = await loadPdfUtils();
+        downloadPDF(generateStatementPDF(response.statement), `account-statement-${statement?.statementId || Date.now()}.pdf`);
         notify('Statement Generated', 'Your account statement has been downloaded as PDF.', 'success');
       } else {
         notify('Error', response.error || 'Failed to generate statement', 'warning');
@@ -1581,8 +1595,8 @@ function AccountDocumentsSection() {
       const response = await getAccountProof(user.email);
       if (response.success && response.proof) {
         setProof(response.proof);
-        const doc = generateProofPDF(response.proof);
-        downloadPDF(doc, `proof-of-account-${response.proof.proofId}.pdf`);
+        const { generateProofPDF, downloadPDF } = await loadPdfUtils();
+        downloadPDF(generateProofPDF(response.proof), `proof-of-account-${response.proof.proofId}.pdf`);
         notify('Proof Generated', 'Your proof of account has been downloaded as PDF.', 'success');
       } else {
         notify('Error', response.error || 'Failed to generate proof', 'warning');
@@ -1601,8 +1615,8 @@ function AccountDocumentsSection() {
       const response = await getAccountAgreement(user.email);
       if (response.success && response.agreement) {
         setAgreement(response.agreement);
-        const doc = generateAgreementPDF(response.agreement);
-        downloadPDF(doc, `account-agreement-${response.agreement.agreementId}.pdf`);
+        const { generateAgreementPDF, downloadPDF } = await loadPdfUtils();
+        downloadPDF(generateAgreementPDF(response.agreement), `account-agreement-${response.agreement.agreementId}.pdf`);
         notify('Agreement Generated', 'Your account agreement has been downloaded as PDF.', 'success');
       } else {
         notify('Error', response.error || 'Failed to generate agreement', 'warning');
@@ -1800,9 +1814,9 @@ function AccountDocumentsSection() {
                 </div>
                 <button
                   className="btn btn-soft btn-sm"
-                  onClick={() => {
-                    const doc = generateStatementPDF(statement);
-                    downloadPDF(doc, `account-statement-${statement.statementId}.pdf`);
+                  onClick={async () => {
+                    const { generateStatementPDF, downloadPDF } = await loadPdfUtils();
+                    downloadPDF(generateStatementPDF(statement), `account-statement-${statement.statementId}.pdf`);
                   }}
                 >
                   <Download size={12} /> Re-download
@@ -1818,9 +1832,9 @@ function AccountDocumentsSection() {
                 </div>
                 <button
                   className="btn btn-soft btn-sm"
-                  onClick={() => {
-                    const doc = generateProofPDF(proof);
-                    downloadPDF(doc, `proof-of-account-${proof.proofId}.pdf`);
+                  onClick={async () => {
+                    const { generateProofPDF, downloadPDF } = await loadPdfUtils();
+                    downloadPDF(generateProofPDF(proof), `proof-of-account-${proof.proofId}.pdf`);
                   }}
                 >
                   <Download size={12} /> Re-download
@@ -1836,9 +1850,9 @@ function AccountDocumentsSection() {
                 </div>
                 <button
                   className="btn btn-soft btn-sm"
-                  onClick={() => {
-                    const doc = generateAgreementPDF(agreement);
-                    downloadPDF(doc, `account-agreement-${agreement.agreementId}.pdf`);
+                  onClick={async () => {
+                    const { generateAgreementPDF, downloadPDF } = await loadPdfUtils();
+                    downloadPDF(generateAgreementPDF(agreement), `account-agreement-${agreement.agreementId}.pdf`);
                   }}
                 >
                   <Download size={12} /> Re-download
@@ -1854,9 +1868,9 @@ function AccountDocumentsSection() {
                 </div>
                 <button
                   className="btn btn-soft btn-sm"
-                  onClick={() => {
-                    const doc = generateInvoicePDF(invoice);
-                    downloadPDF(doc, `invoice-${invoice.invoiceId}.pdf`);
+                  onClick={async () => {
+                    const { generateInvoicePDF, downloadPDF } = await loadPdfUtils();
+                    downloadPDF(generateInvoicePDF(invoice), `invoice-${invoice.invoiceId}.pdf`);
                   }}
                 >
                   <Download size={12} /> Re-download

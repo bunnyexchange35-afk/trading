@@ -709,6 +709,9 @@ export function EntryExperience() {
   useEffect(() => {
     if (!visible) return;
     const timer = window.setInterval(() => {
+      // A backgrounded tab must not spend its CPU budget (or the user's
+      // attention) on the intro — the countdown simply waits.
+      if (document.visibilityState !== 'visible') return;
       setElapsed((value) => {
         if (value >= 9) {
           sessionStorage.setItem('mudrexx-intro-seen', '1');

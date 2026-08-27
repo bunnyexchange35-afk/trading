@@ -2476,3 +2476,122 @@ textarea::placeholder {
     border-bottom: 0 !important;
   }
 }
+
+/* ========================================================================= */
+/* PERFORMANCE LAYER — mobile CPU / battery / thermal                        */
+/* Keeps the visual design (colors, gradients, glows, layout) identical and */
+/* removes only continuous repaint/GPU work: shadow-pulse loops, logo        */
+/* shimmer repaints, huge backdrop blurs over an animated starfield, and    */
+/* every decorative loop while nothing can see them (hidden tab/offline).    */
+/* ========================================================================= */
+
+/* Breathing text/box shadows repaint the whole element every frame.        */
+/* Freeze them at the calm middle value — the glow stays, the loop stops.   */
+.hero-copy h1 em {
+  animation: none;
+  text-shadow: 0 0 26px rgba(139, 108, 255, 0.75);
+}
+.cta-card {
+  animation: none;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55), 0 0 75px rgba(139, 108, 255, 0.26);
+}
+
+/* Logo gradient: still a gradient everywhere. The shimmer loop repaints    */
+/* clipped text every frame, so it only runs on hover-capable desktops and  */
+/* only while the brand is hovered/focused.                                 */
+.brand-copy b,
+.brand-copy em {
+  animation: none;
+}
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .brand:hover .brand-copy b,
+  .brand:hover .brand-copy em,
+  .brand:focus-within .brand-copy b,
+  .brand:focus-within .brand-copy em {
+    animation: brandShimmer 6s linear infinite;
+  }
+}
+
+/* The nebulae are feathered radial gradients already; a 70px blur on top   */
+/* forces full-size GPU re-rasters whenever anything near them repaints.    */
+.nebula {
+  filter: none;
+}
+
+/* Backdrop blur sampling the animated starfield = per-frame repaint.       */
+/* Tokens sit on 86% opaque white; removing the blur is visually equivalent. */
+.floating-token {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* Motion governor (src/perf.ts): while the tab is hidden or the browser is  */
+/* offline, literally nothing may animate.                                    */
+html.motion-paused *,
+html.motion-paused *::before,
+html.motion-paused *::after {
+  animation-play-state: paused !important;
+}
+
+/* Low-power mobile (coarse pointer + small heap / few cores / data saver /  */
+/* running on battery): no endless decorative loops. Resting appearance is    */
+/* unchanged — gradients, glows and layout all stay; only the motion stops.   */
+@media (pointer: coarse) {
+  html.motion-lite .stars-a,
+  html.motion-lite .stars-b,
+  html.motion-lite .nebula-a,
+  html.motion-lite .nebula-b,
+  html.motion-lite .portfolio-card,
+  html.motion-lite .floating-token,
+  html.motion-lite .hero-profit-card,
+  html.motion-lite .product-card::before,
+  html.motion-lite .entry-aurora,
+  html.motion-lite .entry-stars i,
+  html.motion-lite .wallet-scene,
+  html.motion-lite .wealth-rays,
+  html.motion-lite .orbit,
+  html.motion-lite .character,
+  html.motion-lite .exchange-card,
+  html.motion-lite .glow-blue,
+  html.motion-lite .glow-pink,
+  html.motion-lite .cloud,
+  html.motion-lite .coin-btc,
+  html.motion-lite .coin-eth,
+  html.motion-lite .exchange-chip,
+  html.motion-lite .exchange-ticker span,
+  html.motion-lite .exchange-connected i,
+  html.motion-lite .screen-pulse {
+    animation: none !important;
+  }
+  html.motion-lite .stars {
+    will-change: auto;
+  }
+}
+
+/* Suspense placeholder for lazily loaded routes — spinner matches the      */
+/* existing loader language, sized so the layout below never jumps.         */
+.route-fallback {
+  min-height: 62vh;
+  display: grid;
+  place-items: center;
+}
+.route-fallback-dot {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 3px solid rgba(139, 108, 255, 0.28);
+  border-top-color: #8b6cff;
+  animation: routeSpin 0.8s linear infinite;
+}
+@keyframes routeSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* Offscreen marketing sections on Home are skipped by layout+paint until   */
+/* they approach the viewport (IntersectionObserver-driven browser work).   */
+.product-section,
+.steps-section,
+.cta-section {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 640px;
+}

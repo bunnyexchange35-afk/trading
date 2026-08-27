@@ -17,6 +17,7 @@ import {
 } from './api';
 import type { CreditHistoryPoint, StudentNotification, SupportTicket, TradeOrder } from './types';
 import { money } from './data';
+import { useSmartPolling } from './perf';
 
 /** Personal money-flow chart built purely from backend transaction records. */
 function MoneyFlowChart({ transactions }: { transactions: { id: string; title: string; amount: number; type: string; tone: string }[] }) {
@@ -117,10 +118,13 @@ export default function DashboardDesk() {
     setLoading(false);
   }, [user]);
 
+  // Load once on page entry. The desk then stays quiet: a single slow poll
+  // (5 min, visible+online tab only) and a refresh when the tab returns after
+  // that interval. Manual "Refresh desk" still fetches immediately.
   useEffect(() => {
-    if (user) void load();
-    else setLoading(false);
-  }, [user, load]);
+    if (!user) setLoading(false);
+  }, [user]);
+  useSmartPolling(load, { intervalMs: 300_000, enabled: Boolean(user) });
 
   if (!user) return null;
 

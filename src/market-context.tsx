@@ -1,6 +1,8 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useLocation } from 'react-router-dom';
 import { getMarkets } from './api';
 import { ASSETS, FALLBACK_QUOTES, type MarketQuote } from './data';
+import { useSmartPolling } from './perf';
 
 /** Data freshness exactly as the backend reports it — never inferred client-side. */
 export type MarketDataStatus = 'connecting' | 'live' | 'delayed' | 'cached' | 'unavailable';
@@ -18,6 +20,15 @@ type MarketState = {
 };
 
 const MarketContext = createContext<MarketState | null>(null);
+
+/**
+ * Cadence for the live feed. 15 s is the battery/thermal-friendly end of the
+ * 10–15 s "live desk" range: one request per interval, never per second.
+ */
+const MARKET_POLL_MS = 15_000;
+
+/** Routes that actually render market data — polling runs only on these. */
+const MARKET_ROUTES = new Set(['/', '/dashboard', '/market', '/trading', '/instant-order']);
 
 /**
  * Merge live feed rows with the local asset registry so colors, marks,
@@ -61,45 +72,65 @@ export function MarketProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<MarketDataStatus>('connecting');
   const [message, setMessage] = useState('');
   const [refreshedAt, setRefreshedAt] = useState<Date | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0);
+  const abortRef = useRef<AbortController | null>(null);
+  const location = useLocation();
 
-  const refresh = useCallback(() => setRefreshKey((value) => value + 1), []);
+  // Poll only while a route showing market data is mounted. Wallet, tasks,
+  // support, profile… pages never keep the feed looping.
+  const onMarketRoute = MARKET_ROUTES.has(location.pathname);
+  const mountedRef = useRef(false);
+  const enabled = onMarketRoute || !mountedRef.current;
+
+  const load = useCallback(async () => {
+    // One request at a time: a newer load always supersedes the in-flight one
+    // (no stale-response pile-ups when routes/tabs change quickly).
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    try {
+      // Served by the backend or the Cloudflare worker — the browser never
+      // calls a market provider directly. Warm-cache fallback happens
+      // server-side when the provider is unreachable.
+      const body = await getMarkets({ signal: controller.signal });
+      if (controller.signal.aborted) return;
+      if (Array.isArray(body.data) && body.data.length > 0) {
+        setQuotes(mergeWithAssets(body.data));
+      }
+      const nextStatus = statusFromBody(body);
+      setStatus(nextStatus);
+      setConnected(nextStatus === 'live' || nextStatus === 'cached' || nextStatus === 'delayed');
+      setSource(body.source === 'coinbase' ? `Coinbase · ${statusLabel[nextStatus]}` : 'Backend warm cache');
+      setMessage(typeof body.message === 'string' ? body.message : '');
+      setRefreshedAt(new Date());
+    } catch {
+      if (controller.signal.aborted) return;
+      setConnected(false);
+      setStatus('unavailable');
+      setSource('Backend unreachable');
+      setMessage('Market data could not be refreshed. The last backend snapshot is shown.');
+    } finally {
+      if (!controller.signal.aborted) setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    let active = true;
-    const load = async () => {
-      try {
-        // Served by the backend or the Cloudflare worker — the browser never
-        // calls a market provider directly. Warm-cache fallback happens
-        // server-side when the provider is unreachable.
-        const body = await getMarkets();
-        if (!active) return;
-        if (Array.isArray(body.data) && body.data.length > 0) {
-          setQuotes(mergeWithAssets(body.data));
-        }
-        const nextStatus = statusFromBody(body);
-        setStatus(nextStatus);
-        setConnected(nextStatus === 'live' || nextStatus === 'cached' || nextStatus === 'delayed');
-        setSource(body.source === 'coinbase' ? `Coinbase · ${statusLabel[nextStatus]}` : 'Backend warm cache');
-        setMessage(typeof body.message === 'string' ? body.message : '');
-        setRefreshedAt(new Date());
-      } catch {
-        if (!active) return;
-        setConnected(false);
-        setStatus('unavailable');
-        setSource('Backend unreachable');
-        setMessage('Market data could not be refreshed. The last backend snapshot is shown.');
-      } finally {
-        if (active) setLoading(false);
-      }
-    };
+    mountedRef.current = true;
+  }, []);
+
+  useSmartPolling(load, { intervalMs: MARKET_POLL_MS, enabled });
+
+  // Leaving a market route must not leave an orphaned request running.
+  useEffect(() => {
+    if (onMarketRoute) return;
+    abortRef.current?.abort();
+    abortRef.current = null;
+  }, [onMarketRoute]);
+
+  const refresh = useCallback(() => {
     void load();
-    const timer = window.setInterval(load, 12_000);
-    return () => {
-      active = false;
-      window.clearInterval(timer);
-    };
-  }, [refreshKey]);
+  }, [load]);
+
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   const value = useMemo<MarketState>(
     () => ({
