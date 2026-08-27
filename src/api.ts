@@ -154,6 +154,8 @@ function extractErrorCode(body: unknown, fallbackStatus = 0): { message: string;
 
 type RequestOptions = {
   allowAccessRequired?: boolean;
+  /** Cancellation — used to abort superseded reads (symbol switch, unmount). */
+  signal?: AbortSignal;
 };
 
 async function request<T>(path: string, init?: RequestInit, options?: RequestOptions): Promise<T> {
@@ -173,8 +175,10 @@ async function request<T>(path: string, init?: RequestInit, options?: RequestOpt
       ...init,
       credentials: 'include',
       headers,
+      signal: options?.signal,
     });
-  } catch {
+  } catch (error) {
+    if ((error as Error)?.name === 'AbortError') throw error;
     throw new ApiError('Backend is unreachable. Check your connection and try again.');
   }
 
@@ -215,6 +219,25 @@ async function request<T>(path: string, init?: RequestInit, options?: RequestOpt
 
 const post = <T>(path: string, payload: unknown) =>
   request<T>(path, { method: 'POST', body: JSON.stringify(payload) });
+
+/**
+ * In-flight dedupe for identical GETs: several components mounting at the
+ * same moment (dashboard + task tile + order board + orders page) share one
+ * request instead of stampeding the backend. A caller that passes an abort
+ * signal opts out of sharing — cancelling one consumer must not cancel
+ * another consumer's read.
+ */
+const inflightGets = new Map<string, Promise<unknown>>();
+
+function dedupGet<T>(key: string, factory: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (signal) return factory();
+  const existing = inflightGets.get(key) as Promise<T> | undefined;
+  if (existing) return existing;
+  const promise = factory();
+  inflightGets.set(key, promise);
+  promise.catch(() => undefined).finally(() => inflightGets.delete(key));
+  return promise;
+}
 
 export type HealthResponse = {
   ok: boolean;
@@ -649,12 +672,13 @@ export async function getHealth(): Promise<HealthResponse> {
   return request<HealthResponse>('/api/health');
 }
 
-export async function getMarkets(): Promise<MarketsResponse> {
-  return request<MarketsResponse>('/api/markets');
+export async function getMarkets(options: { signal?: AbortSignal } = {}): Promise<MarketsResponse> {
+  return dedupGet('/api/markets', () => request<MarketsResponse>('/api/markets'), options.signal);
 }
 
-export async function getKlines(symbol = 'BTC', interval = '1m'): Promise<KlinesResponse> {
-  return request<KlinesResponse>(`/api/market/klines?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}`);
+export async function getKlines(symbol = 'BTC', interval = '1m', signal?: AbortSignal): Promise<KlinesResponse> {
+  const path = `/api/market/klines?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}`;
+  return dedupGet(path, () => request<KlinesResponse>(path), signal);
 }
 
 export type AuthSnapshot = {
@@ -977,15 +1001,18 @@ export async function updateProfile(data: {
 }
 
 export async function getWalletSummary(email: string): Promise<WalletSummaryResponse> {
-  return request<WalletSummaryResponse>(`/api/wallet/summary?email=${encodeURIComponent(email)}`);
+  const path = `/api/wallet/summary?email=${encodeURIComponent(email)}`;
+  return dedupGet(path, () => request<WalletSummaryResponse>(path));
 }
 
 export async function getTransactions(email: string): Promise<TransactionsResponse> {
-  return request<TransactionsResponse>(`/api/wallet/transactions?email=${encodeURIComponent(email)}`);
+  const path = `/api/wallet/transactions?email=${encodeURIComponent(email)}`;
+  return dedupGet(path, () => request<TransactionsResponse>(path));
 }
 
 export async function getFrozenItems(email: string): Promise<FrozenResponse> {
-  return request<FrozenResponse>(`/api/wallet/frozen?email=${encodeURIComponent(email)}`);
+  const path = `/api/wallet/frozen?email=${encodeURIComponent(email)}`;
+  return dedupGet(path, () => request<FrozenResponse>(path));
 }
 
 export async function releaseFrozenItem(email: string, id: string): Promise<ReleaseResponse> {
@@ -1044,7 +1071,8 @@ export async function createOrder(data: {
 }
 
 export async function listOrders(email: string): Promise<OrdersListResponse> {
-  return request<OrdersListResponse>(`/api/orders/list?email=${encodeURIComponent(email)}`);
+  const path = `/api/orders/list?email=${encodeURIComponent(email)}`;
+  return dedupGet(path, () => request<OrdersListResponse>(path));
 }
 
 export async function getAdminRole(code: string): Promise<AdminRoleResponse> {
@@ -1143,6 +1171,10 @@ export type OrderConfigResponse = {
  * when the combined route is not implemented by the connected backend.
  */
 export async function getOrderConfig(): Promise<OrderDeskConfig> {
+  return dedupGet('order-config', loadOrderConfig);
+}
+
+async function loadOrderConfig(): Promise<OrderDeskConfig> {
   try {
     const body = await request<OrderConfigResponse>('/api/order/config');
     if (body?.config?.currencies?.length && body.config.durations?.length) return body.config;
@@ -1183,7 +1215,7 @@ export type TasksResponse = {
 };
 
 export async function getTasks(): Promise<TasksResponse> {
-  return request<TasksResponse>('/api/tasks');
+  return dedupGet('/api/tasks', () => request<TasksResponse>('/api/tasks'));
 }
 
 // ---- credit score ------------------------------------------------------------
@@ -1201,11 +1233,11 @@ export type CreditHistoryResponse = {
 };
 
 export async function getCreditScore(): Promise<CreditScoreResponse> {
-  return request<CreditScoreResponse>('/api/credit-score');
+  return dedupGet('/api/credit-score', () => request<CreditScoreResponse>('/api/credit-score'));
 }
 
 export async function getCreditScoreHistory(): Promise<CreditHistoryResponse> {
-  return request<CreditHistoryResponse>('/api/credit-score/history');
+  return dedupGet('/api/credit-score/history', () => request<CreditHistoryResponse>('/api/credit-score/history'));
 }
 
 // ---- account snapshot (profile page) -----------------------------------------
@@ -1234,7 +1266,7 @@ export type AccountSnapshotResponse = {
 };
 
 export async function getAccountSnapshot(): Promise<AccountSnapshotResponse> {
-  return request<AccountSnapshotResponse>('/api/user/account');
+  return dedupGet('/api/user/account', () => request<AccountSnapshotResponse>('/api/user/account'));
 }
 
 // ---- market detail / ohlcv / analysis ----------------------------------------
@@ -1266,8 +1298,9 @@ export type MarketAnalysisResponse = {
   error?: string;
 };
 
-export async function getMarketDetail(symbol: string): Promise<MarketDetailResponse> {
-  return request<MarketDetailResponse>(`/api/markets/${encodeURIComponent(symbol)}`);
+export async function getMarketDetail(symbol: string, signal?: AbortSignal): Promise<MarketDetailResponse> {
+  const path = `/api/markets/${encodeURIComponent(symbol)}`;
+  return dedupGet(path, () => request<MarketDetailResponse>(path), signal);
 }
 
 export async function getMarketOhlcv(symbol: string, interval = '5m'): Promise<OhlcvResponse> {
@@ -1276,10 +1309,9 @@ export async function getMarketOhlcv(symbol: string, interval = '5m'): Promise<O
   );
 }
 
-export async function getMarketAnalysis(symbol: string, interval = '5m'): Promise<MarketAnalysisResponse> {
-  return request<MarketAnalysisResponse>(
-    `/api/markets/${encodeURIComponent(symbol)}/analysis?interval=${encodeURIComponent(interval)}`
-  );
+export async function getMarketAnalysis(symbol: string, interval = '5m', signal?: AbortSignal): Promise<MarketAnalysisResponse> {
+  const path = `/api/markets/${encodeURIComponent(symbol)}/analysis?interval=${encodeURIComponent(interval)}`;
+  return dedupGet(path, () => request<MarketAnalysisResponse>(path), signal);
 }
 
 // ---- customer support tickets -------------------------------------------------
@@ -1299,7 +1331,7 @@ export type SupportTicketResponse = {
 };
 
 export async function getSupportTickets(): Promise<SupportTicketsResponse> {
-  return request<SupportTicketsResponse>('/api/support/tickets');
+  return dedupGet('/api/support/tickets', () => request<SupportTicketsResponse>('/api/support/tickets'));
 }
 
 export async function createSupportTicket(data: {
@@ -1329,7 +1361,7 @@ export type NotificationsResponse = {
 };
 
 export async function getNotifications(): Promise<NotificationsResponse> {
-  return request<NotificationsResponse>('/api/notifications');
+  return dedupGet('/api/notifications', () => request<NotificationsResponse>('/api/notifications'));
 }
 
 // ---- documents -------------------------------------------------------------------
@@ -1374,7 +1406,7 @@ export type AccountInvoiceResponse = {
 };
 
 export async function getDocumentsCatalog(): Promise<DocumentsCatalogResponse> {
-  return request<DocumentsCatalogResponse>('/api/documents');
+  return dedupGet('/api/documents', () => request<DocumentsCatalogResponse>('/api/documents'));
 }
 
 export async function getAccountInvoice(email: string): Promise<AccountInvoiceResponse> {
@@ -1399,7 +1431,7 @@ export type NovaChatResponse = {
 };
 
 export async function getNovaStatus(): Promise<NovaStatusResponse> {
-  return request<NovaStatusResponse>('/api/nova/status');
+  return dedupGet('/api/nova/status', () => request<NovaStatusResponse>('/api/nova/status'));
 }
 
 export async function sendNovaMessage(data: {

@@ -133,6 +133,17 @@ type AppState = {
 const AppContext = createContext<AppState | null>(null);
 let noticeId = 0;
 
+/**
+ * Broadcast that order state changed (placement, cancellation, settlement).
+ * The order board listens and refreshes once immediately instead of relying
+ * on aggressive polling to discover local mutations.
+ */
+export const ORDERS_CHANGED_EVENT = 'mudrexx:orders-changed';
+
+export function notifyOrdersChanged() {
+  window.dispatchEvent(new Event(ORDERS_CHANGED_EVENT));
+}
+
 function readSession(): Session | null {
   try {
     const stored = localStorage.getItem('mudrexx-session');
@@ -462,6 +473,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const res = await releaseFrozenItem(user.email, id);
         if (!res?.success) throw new ApiError(res?.error || 'Release failed on the backend.');
         await refreshFromServer(user.email);
+        notifyOrdersChanged();
         notify('Funds released! 🔓', res.message || 'Funds returned to your Available Balance.', 'info');
       } catch (error) {
         notify('Release failed', apiMessage(error), 'warning');
@@ -494,6 +506,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         });
         if (!res?.success) throw new ApiError(res?.error || 'Order could not be placed.');
         await refreshFromServer(user.email);
+        notifyOrdersChanged();
         notify(
           'Order placed & funds frozen',
           res.message || `${order.currency === 'INR' ? '₹' : '₮'}${order.amount.toLocaleString()} is locked in your Frozen Amount section until executed or cancelled.`,

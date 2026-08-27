@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   Activity, AlertTriangle, ArrowDown, ArrowRight, ArrowUp, BarChart2, CheckCircle2, ChevronDown,
@@ -6,11 +6,12 @@ import {
   Trophy, Wallet, X,
 } from 'lucide-react';
 import { CoinIcon } from './components';
-import { apiMessage, createOrder, getOrderConfig, listOrders, type OrderDeskConfig, type WalletState } from './api';
+import { apiMessage, createOrder, getKlines, getOrderConfig, listOrders, type OrderDeskConfig, type WalletState } from './api';
 import type { TradeOrder } from './types';
 import { ASSETS, INR_RATE, money } from './data';
 import { useMarket } from './market-context';
-import { useApp } from './app-context';
+import { ORDERS_CHANGED_EVENT, useApp } from './app-context';
+import { useInView, useSmartPolling } from './perf';
 
 type Candle = { time: number; open: number; high: number; low: number; close: number; volume: number };
 type ResultPopup = {
@@ -164,6 +165,7 @@ export default function InstantOrder() {
         });
         if (!res?.success) throw new Error(res?.error || 'Order could not be placed.');
         await refreshUser(user.email);
+        window.dispatchEvent(new Event(ORDERS_CHANGED_EVENT));
         setPopup({
           kind: 'order',
           title: 'Order Placed',
@@ -482,38 +484,46 @@ function LiveChart({
   const [candles, setCandles] = useState<Candle[]>([]);
   const [loading, setLoading] = useState(true);
   const [feedSource, setFeedSource] = useState('');
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  // A chart that has scrolled out of view keeps its last frame and stops
+  // refetching; a hidden tab pauses the loop entirely (see useSmartPolling).
+  const inView = useInView(wrapRef);
 
+  // Chart data comes exclusively from the backend gateway (/api/market/klines)
+  // — the browser never calls the market provider directly. The feed status
+  // label reflects exactly what the backend reports. One request at a time:
+  // changing symbol or range aborts whatever the previous selection still
+  // had in flight (AbortController below).
+  const loadCandles = useCallback(async () => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    try {
+      const body = await getKlines(symbol, interval, controller.signal);
+      if (controller.signal.aborted) return;
+      if (Array.isArray(body.data) && body.data.length) setCandles(body.data);
+      setFeedSource(body.source === 'coinbase' ? 'Backend live' : 'Backend cache');
+    } catch {
+      if (controller.signal.aborted) return;
+      setFeedSource('Unavailable');
+    } finally {
+      if (!controller.signal.aborted) setLoading(false);
+    }
+  }, [symbol, interval]);
+
+  // Immediate (re)load whenever the symbol or chart range changes.
   useEffect(() => {
-    let active = true;
     setLoading(true);
     setFeedSource('');
-
-    // Chart data comes exclusively from the backend gateway (/api/market/klines)
-    // — the browser never calls the market provider directly. The feed status
-    // label reflects exactly what the backend reports.
-    const loadCandles = () => {
-      fetch(`/api/market/klines?symbol=${symbol}&interval=${interval}`)
-        .then((response) => response.json())
-        .then((body: { data?: Candle[]; source?: string }) => {
-          if (!active) return;
-          if (Array.isArray(body.data) && body.data.length) setCandles(body.data);
-          setFeedSource(body.source === 'coinbase' ? 'Backend live' : 'Backend cache');
-        })
-        .catch(() => {
-          if (active) setFeedSource('Unavailable');
-        })
-        .finally(() => {
-          if (active) setLoading(false);
-        });
-    };
-
-    loadCandles();
-    const poller = window.setInterval(loadCandles, 10_000);
+    void loadCandles();
     return () => {
-      active = false;
-      window.clearInterval(poller);
+      abortRef.current?.abort();
+      abortRef.current = null;
     };
-  }, [symbol, interval]);
+  }, [loadCandles]);
+
+  useSmartPolling(loadCandles, { intervalMs: 15_000, enabled: inView });
 
   const geometry = useMemo(() => {
     const values = candles.map((item) => item.close);
@@ -533,7 +543,7 @@ function LiveChart({
   }, [candles, price]);
 
   return (
-    <div className="live-chart">
+    <div className="live-chart" ref={wrapRef}>
       <div className="chart-toolbar">
         <div className="chart-tabs">
           <button className="active">Price</button>
@@ -847,59 +857,100 @@ function AviatorGame({ onResult }: { onResult: (value: ResultPopup) => void }) {
  * Live order board — every order placed from this page lands here with its
  * win / lose state, payout %, currency, time and wallet balance state.
  */
+/**
+ * Per-row countdown. Renders itself off a lightweight local clock instead of
+ * refetching the board every second; the server expiry timestamp is the single
+ * source of truth and the full state is polled only at the board cadence.
+ */
+function OrderRemaining({ order, onExpire }: { order: TradeOrder; onExpire?: () => void }) {
+  const [now, setNow] = useState(() => Date.now());
+  const expireRef = useRef(onExpire);
+  expireRef.current = onExpire;
+  const isOpen = order.status === 'open';
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setNow(Date.now());
+    let fired = false;
+    const timer = window.setInterval(() => {
+      // A hidden tab does not need ticking digits.
+      if (document.visibilityState !== 'visible') return;
+      const next = Date.now();
+      setNow(next);
+      if (next >= order.expiresAt && !fired) {
+        fired = true;
+        expireRef.current?.();
+      }
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [isOpen, order.expiresAt]);
+
+  if (!isOpen) return <>{order.durationSeconds}s</>;
+  const remaining = Math.max(0, Math.ceil((order.expiresAt - now) / 1000));
+  return <>{remaining}s left</>;
+}
+
 function OrdersBoard() {
   const { user, notify, refreshUser } = useApp();
   const [orders, setOrders] = useState<TradeOrder[]>([]);
   const [walletState, setWalletState] = useState<WalletState | null>(null);
   const seen = useRef<Map<string, string>>(new Map());
+  const boardRef = useRef<HTMLElement>(null);
+  const inView = useInView(boardRef, { sticky: true });
+  // Poll only while open orders exist (true until the first snapshot proves
+  // otherwise, so an order restored from a previous session is picked up).
+  const [hasOpenOrders, setHasOpenOrders] = useState(true);
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     if (!user) return;
-    let active = true;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const tick = async () => {
-      try {
-        const res = await listOrders(user.email);
-        if (active && res.success) {
-          setOrders(res.orders || []);
-          setWalletState(res.wallet || null);
-          for (const order of res.orders || []) {
-            const previous = seen.current.get(order.id);
-            if (previous === 'open' && order.status !== 'open') {
-              const sign = order.currency === 'INR' ? '₹' : '₮';
-              if (order.status === 'won') {
-                notify('Order won 🏆', `${order.symbol} ${order.side.toUpperCase()} returned ${sign}${Math.floor(order.payout || 0).toLocaleString()}.`, 'success');
-              } else if (order.status === 'lost') {
-                notify('Order closed', `${order.symbol} ${order.side.toUpperCase()} closed at 0.`, 'info');
-              } else {
-                notify('Order cancelled', `${order.symbol} order was refunded.`, 'info');
-              }
-              void refreshUser(user.email);
-            }
-            seen.current.set(order.id, order.status);
+    try {
+      const res = await listOrders(user.email);
+      if (!res.success) return;
+      const next = res.orders || [];
+      setOrders(next);
+      setWalletState(res.wallet || null);
+      setHasOpenOrders(next.some((order) => order.status === 'open'));
+      for (const order of next) {
+        const previous = seen.current.get(order.id);
+        if (previous === 'open' && order.status !== 'open') {
+          const sign = order.currency === 'INR' ? '₹' : '₮';
+          if (order.status === 'won') {
+            notify('Order won 🏆', `${order.symbol} ${order.side.toUpperCase()} returned ${sign}${Math.floor(order.payout || 0).toLocaleString()}.`, 'success');
+          } else if (order.status === 'lost') {
+            notify('Order closed', `${order.symbol} ${order.side.toUpperCase()} closed at 0.`, 'info');
+          } else {
+            notify('Order cancelled', `${order.symbol} order was refunded.`, 'info');
           }
+          void refreshUser(user.email);
         }
-      } catch {
-        /* backend momentarily unreachable — next poll retries */
-      } finally {
-        if (active) timer = setTimeout(tick, 4000);
+        seen.current.set(order.id, order.status);
       }
-    };
-    void tick();
-    return () => {
-      active = false;
-      if (timer) clearTimeout(timer);
-    };
+    } catch {
+      /* backend momentarily unreachable — next poll retries */
+    }
   }, [user, notify, refreshUser]);
+
+  // Server state is fetched at a calm cadence, only while the board is on
+  // screen, the tab is visible/online and at least one order is open.
+  useSmartPolling(load, { intervalMs: 10_000, enabled: Boolean(user) && inView && hasOpenOrders });
+
+  // Placing/cancelling an order refreshes the board once, immediately.
+  useEffect(() => {
+    const onOrdersChanged = () => {
+      setHasOpenOrders(true);
+      void load();
+    };
+    window.addEventListener(ORDERS_CHANGED_EVENT, onOrdersChanged);
+    return () => window.removeEventListener(ORDERS_CHANGED_EVENT, onOrdersChanged);
+  }, [load]);
 
   if (!user) return null;
 
   const fmtInr = (value: number) => `₹${Math.floor(value).toLocaleString('en-IN')}`;
-  const remaining = (order: TradeOrder) => Math.max(0, Math.ceil((order.expiresAt - Date.now()) / 1000));
   const visible = orders.slice(0, 12);
 
   return (
-    <section className="order-board container">
+    <section className="order-board container" ref={boardRef}>
       <div className="ob-heading">
         <div>
           <span className="eyebrow">ORDER BOARD</span>
@@ -940,9 +991,7 @@ function OrdersBoard() {
             </span>
             <span className="ob-percent">{order.settledPercent ?? order.payoutPercent}%</span>
             <span className="ob-time">
-              {order.status === 'open'
-                ? `${remaining(order)}s left`
-                : `${order.durationSeconds}s`}
+              <OrderRemaining order={order} onExpire={() => void load()} />
             </span>
             <span className="ob-price" title={order.settledAt ? `Settled ${new Date(order.settledAt).toLocaleString()}${order.settledBy ? ` by ${order.settledBy}` : ''}` : undefined}>
               {order.entryPrice >= 1 ? order.entryPrice.toFixed(2) : order.entryPrice.toPrecision(4)}
