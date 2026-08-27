@@ -27,8 +27,11 @@ const MarketContext = createContext<MarketState | null>(null);
  */
 const MARKET_POLL_MS = 15_000;
 
-/** Routes that actually render market data — polling runs only on these. */
+/** Routes that render a live feed — the loop runs only on these. */
 const MARKET_ROUTES = new Set(['/', '/dashboard', '/market', '/trading', '/instant-order']);
+/** Routes that merely display quotes (wallet valuations): refreshed once on
+ *  entry, then idle — no background loop. */
+const MARKET_ENTRY_ROUTES = new Set(['/wallet']);
 
 /**
  * Merge live feed rows with the local asset registry so colors, marks,
@@ -118,6 +121,12 @@ export function MarketProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useSmartPolling(load, { intervalMs: MARKET_POLL_MS, enabled });
+
+  // Entry-only pages (wallet valuation strip): one fresh read per arrival,
+  // never a background loop.
+  useEffect(() => {
+    if (!onMarketRoute && MARKET_ENTRY_ROUTES.has(location.pathname)) void load();
+  }, [onMarketRoute, location.pathname, load]);
 
   // Leaving a market route must not leave an orphaned request running.
   useEffect(() => {
