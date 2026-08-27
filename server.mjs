@@ -206,6 +206,7 @@ function requireAuth(req, res, next) {
     if (req.body) req.body.email = user.email;
   }
   req.authUser = user;
+  user.lastActivityAt = new Date().toISOString();
   next();
 }
 
@@ -213,14 +214,21 @@ function getOrCreateUser(email, name = '') {
   const normalized = String(email || 'demo@mudrexx.com').trim().toLowerCase();
   if (!userDb.has(normalized)) {    // New user registration starts with ZERO balance and 10,000 demo credits
     userDb.set(normalized, {
+      id: `USR-${crypto.randomBytes(6).toString('hex').toUpperCase()}`,
+      username: normalized.split('@')[0].replace(/[^a-z0-9._-]/g, '') || `trader${Date.now()}`,
       name: name || normalized.split('@')[0],
       email: normalized,
       phone: '',
       preferredCurrency: 'INR',
       registeredAt: new Date().toISOString(),
+      lastActivityAt: new Date().toISOString(),
+      status: 'active',
       inviteCode: generateInviteCode(),
       invitedBy: '',
       invitedByType: '',
+      tasks: [],
+      supportTickets: [],
+      creditHistory: [],
       wallet: {
         realBalance: 0,
         realUsdtBalance: 0,
@@ -254,6 +262,16 @@ function getOrCreateUser(email, name = '') {
   if (user && !user.inviteCode) {
     user.inviteCode = generateInviteCode();
     persist();
+  }
+  // Backfill account metadata for records created before these fields existed.
+  if (user) {
+    if (!user.id) user.id = `USR-${crypto.randomBytes(6).toString('hex').toUpperCase()}`;
+    if (!user.username) user.username = normalized.split('@')[0].replace(/[^a-z0-9._-]/g, '') || `trader${Date.now()}`;
+    if (!user.status) user.status = 'active';
+    if (!user.lastActivityAt) user.lastActivityAt = user.registeredAt || new Date().toISOString();
+    if (!Array.isArray(user.tasks)) user.tasks = [];
+    if (!Array.isArray(user.supportTickets)) user.supportTickets = [];
+    if (!Array.isArray(user.creditHistory)) user.creditHistory = [];
   }
   return user;
 }
@@ -419,6 +437,17 @@ app.get('/api', (_req, res) => {
         statement: 'GET /api/account/statement?email=...',
         proof: 'GET /api/account/proof?email=...',
         agreement: 'GET /api/account/agreement?email=...',
+      },
+      studentDesk: {
+        orderConfig: 'GET /api/order/config (also /api/order/assets, /api/order/currencies, /api/order/durations)',
+        tasks: 'GET /api/tasks (auth)',
+        creditScore: 'GET /api/credit-score, GET /api/credit-score/history (auth)',
+        accountSnapshot: 'GET /api/user/account (auth)',
+        marketDetail: 'GET /api/markets/:symbol, /api/markets/:symbol/ohlcv, /api/markets/:symbol/analysis',
+        support: 'GET/POST /api/support/tickets, POST /api/withdrawal/support (auth)',
+        notifications: 'GET /api/notifications (auth)',
+        documents: 'GET /api/documents, GET /api/account/invoice (auth)',
+        nova: 'GET /api/nova/status, POST /api/nova/chat (auth)',
       },
     },
   });
@@ -975,7 +1004,7 @@ app.get('/api/auth/me', (req, res) => {
   if (requested && requested !== user.email) {
     return res.status(403).json({ error: 'This session can only access its own account.' });
   }
-  res.json({ success: true, user });
+  res.json({ success: true, user: decorateUser(user) });
 });
 
 // Update Profile
@@ -1025,6 +1054,13 @@ app.get('/api/wallet/summary', (req, res) => {
       frozenTotal: w.frozenBalance,
       frozenTotalUsdt: w.frozenUsdtBalance,
       openOrders: (user.orders || []).filter((entry) => entry.status === 'open').length,
+      // Funds held pending verification (deposits not yet credited).
+      pendingAmount: (w.frozenItems || [])
+        .filter((item) => item.category === 'deposit' && item.status === 'processing')
+        .reduce((sum, item) => sum + (item.currency === 'INR' ? Number(item.amount) || 0 : 0), 0),
+      pendingAmountUsdt: (w.frozenItems || [])
+        .filter((item) => item.category === 'deposit' && item.status === 'processing')
+        .reduce((sum, item) => sum + (item.currency === 'USDT' ? Number(item.amount) || 0 : 0), 0),
     },
   });
 });
@@ -1769,6 +1805,731 @@ app.post('/api/wallet/demo/adjust', (req, res) => {
     delta: change,
     newDemoBalance: user.wallet.demoBalance,
   });
+});
+
+// ============================================================================
+// 8.5 STUDENT DESK EXTENSIONS — order config, tasks, credit score, market
+// detail & analysis, support tickets, withdrawal→support, notifications,
+// documents catalog/invoice and the NOVA copilot.
+//
+// These routes mirror the mudrexxback contract. In production the Cloudflare
+// worker serves the SPA and passes unimplemented /api paths through to the
+// bound backend (service binding BACKEND or BACKEND_ORIGIN); locally this
+// Express server is the provider.
+// ============================================================================
+
+// ---- order desk configuration (backend-controlled; override with ORDER_CONFIG_JSON)
+const defaultOrderConfig = {
+  enabled: true,
+  accountTypes: ['real', 'demo'],
+  assets: symbols.map((symbol) => ({ symbol, name: assets[symbol][0], enabled: true })),
+  currencies: [
+    { code: 'INR', enabled: true, minAmount: 100, maxAmount: 500000, quickAmounts: [500, 1000, 2500, 5000] },
+    { code: 'USDT', enabled: true, minAmount: 1, maxAmount: 10000, quickAmounts: [10, 25, 50, 100] },
+  ],
+  durations: [30, 60, 180, 300],
+  payoutPercents: [3, 5, 10],
+  defaultDuration: 60,
+  defaultPayoutPercent: 5,
+  settlement: {
+    mode: 'expiry',
+    description: 'Orders settle automatically at expiry against the live market price. Admins may resolve an order early (WIN / LOSE / CANCEL) from the control panel.',
+    frozenUntilSettlement: true,
+  },
+};
+
+function orderConfig() {
+  const raw = process.env.ORDER_CONFIG_JSON;
+  if (!raw) return defaultOrderConfig;
+  try {
+    return { ...defaultOrderConfig, ...JSON.parse(raw) };
+  } catch {
+    return defaultOrderConfig;
+  }
+}
+
+app.get('/api/order/config', (_req, res) => res.json({ success: true, config: orderConfig() }));
+app.get('/api/order/assets', (_req, res) =>
+  res.json({ success: true, assets: orderConfig().assets.filter((item) => item.enabled !== false) })
+);
+app.get('/api/order/currencies', (_req, res) =>
+  res.json({ success: true, currencies: orderConfig().currencies.filter((item) => item.enabled !== false) })
+);
+app.get('/api/order/durations', (_req, res) => res.json({ success: true, durations: orderConfig().durations }));
+
+// ---- server-side credit score & user category (the frontend never computes these)
+function creditStatusFor(score) {
+  if (score >= 800) return 'excellent';
+  if (score >= 700) return 'good';
+  if (score >= 600) return 'fair';
+  return 'poor';
+}
+
+function computeCreditScore(user) {
+  const orders = user.orders || [];
+  const settled = orders.filter((entry) => entry.status === 'won' || entry.status === 'lost');
+  const wins = orders.filter((entry) => entry.status === 'won').length;
+  const tasksDone = (user.tasks || []).filter((task) => task.status === 'completed').length;
+  const ageDays = Math.max(
+    0,
+    Math.floor((Date.now() - new Date(user.registeredAt || Date.now()).getTime()) / 86400000)
+  );
+  const deposits = Number(user.wallet?.depositCreditedTotal || 0);
+
+  let score = 420;
+  score += Math.min(120, settled.length * 6);           // activity
+  if (settled.length) score += Math.min(120, Math.round((wins / settled.length) * 120)); // outcomes
+  score += Math.min(90, tasksDone * 15);                // task completion
+  score += Math.min(90, Math.floor(ageDays / 7) * 10);  // account age
+  if (deposits >= 100000) score += 60;
+  else if (deposits >= 25000) score += 35;
+  else if (deposits > 0) score += 15;
+  score = Math.max(300, Math.min(900, Math.round(score)));
+
+  return { score, status: creditStatusFor(score) };
+}
+
+function computeCategory(user) {
+  if (user.status === 'restricted') return 'Restricted';
+  const last = new Date(user.lastActivityAt || user.registeredAt || 0).getTime();
+  if (Date.now() - last > 30 * 86400000) return 'Inactive';
+  const orders = user.orders || [];
+  const settled = orders.filter((entry) => entry.status === 'won' || entry.status === 'lost');
+  const ageDays = Math.max(0, Math.floor((Date.now() - new Date(user.registeredAt || Date.now()).getTime()) / 86400000));
+  const deposits = Number(user.wallet?.depositCreditedTotal || 0);
+  if (ageDays < 7 && settled.length === 0) return 'New';
+  if (deposits >= 100000) return 'VIP';
+  if (deposits >= 25000) return 'High Value';
+  if (computeCreditScore(user).score < 500) return 'At Risk';
+  return 'Active';
+}
+
+function currentCredit(user) {
+  const { score, status } = computeCreditScore(user);
+  const history = Array.isArray(user.creditHistory) ? user.creditHistory : [];
+  const last = history[0];
+  if (!last || last.score !== score) {
+    history.unshift({ score, status, at: new Date().toISOString() });
+    user.creditHistory = history.slice(0, 24);
+    persist();
+  }
+  return { score, status, updatedAt: user.creditHistory[0].at };
+}
+
+// Account snapshot attached to auth responses (computed fields only — never persisted).
+function decorateUser(user) {
+  return {
+    ...user,
+    category: computeCategory(user),
+    creditScore: currentCredit(user),
+    adminUserCode: user.invitedByType === 'admin' || user.invitedByType === 'super' ? user.invitedBy : '',
+  };
+}
+
+// ---- student tasks (admin/backend-controlled; the student only reads them)
+function ensureTasks(user) {
+  if (Array.isArray(user.tasks) && user.tasks.length) return;
+  const start = new Date(user.registeredAt || Date.now()).getTime();
+  const day = 86400000;
+  user.tasks = [
+    {
+      id: `task-${user.id || user.email}-1`,
+      title: 'Complete your profile',
+      description: 'Add your mobile number and preferred currency so the desk can personalise your experience.',
+      category: 'Account',
+      priority: 'high',
+      status: 'in_progress',
+      createdAt: new Date(start).toISOString(),
+      dueDate: new Date(start + 3 * day).toISOString(),
+      completedAt: null,
+    },
+    {
+      id: `task-${user.id || user.email}-2`,
+      title: 'Place your first practice order',
+      description: 'Use demo credits on the Instant Order desk to understand direction, duration and payout.',
+      category: 'Trading',
+      priority: 'medium',
+      status: 'pending',
+      createdAt: new Date(start).toISOString(),
+      dueDate: new Date(start + 7 * day).toISOString(),
+      completedAt: null,
+    },
+    {
+      id: `task-${user.id || user.email}-3`,
+      title: 'Review the account agreement',
+      description: 'Download the Account Agreement from your profile documents area and accept the trading terms.',
+      category: 'Documents',
+      priority: 'low',
+      status: 'pending',
+      createdAt: new Date(start).toISOString(),
+      dueDate: new Date(start + 14 * day).toISOString(),
+      completedAt: null,
+    },
+    {
+      id: `task-${user.id || user.email}-4`,
+      title: 'Secure your account',
+      description: 'Enable login alerts and keep your invitation code private. Support never asks for OTPs.',
+      category: 'Security',
+      priority: 'medium',
+      status: 'completed',
+      createdAt: new Date(start).toISOString(),
+      dueDate: new Date(start + 5 * day).toISOString(),
+      completedAt: new Date(start + 1 * day).toISOString(),
+    },
+  ];
+  persist();
+}
+
+app.get('/api/tasks', requireAuth, (req, res) => {
+  const user = req.authUser;
+  ensureTasks(user);
+  autoSettleOrders(user);
+  const now = Date.now();
+  const tasks = (user.tasks || []).map((task) => {
+    const overdue = task.status !== 'completed' && task.status !== 'failed' && new Date(task.dueDate || 0).getTime() < now;
+    return { ...task, status: overdue ? 'overdue' : task.status };
+  });
+  res.json({
+    success: true,
+    tasks,
+    summary: {
+      total: tasks.length,
+      pending: tasks.filter((t) => t.status === 'pending').length,
+      inProgress: tasks.filter((t) => t.status === 'in_progress').length,
+      completed: tasks.filter((t) => t.status === 'completed').length,
+      failed: tasks.filter((t) => t.status === 'failed').length,
+      overdue: tasks.filter((t) => t.status === 'overdue').length,
+    },
+  });
+});
+
+// ---- credit score
+app.get('/api/credit-score', requireAuth, (req, res) => {
+  const user = req.authUser;
+  const credit = currentCredit(user);
+  res.json({ success: true, creditScore: { ...credit, category: computeCategory(user) } });
+});
+
+app.get('/api/credit-score/history', requireAuth, (req, res) => {
+  const user = req.authUser;
+  currentCredit(user);
+  res.json({ success: true, history: (user.creditHistory || []).slice(0, 24) });
+});
+
+// ---- extended account snapshot (profile page)
+app.get('/api/user/account', requireAuth, (req, res) => {
+  const user = req.authUser;
+  res.json({
+    success: true,
+    account: {
+      id: user.id || '',
+      username: user.username || '',
+      name: user.name,
+      email: user.email,
+      phone: user.phone || '',
+      status: user.status || 'active',
+      category: computeCategory(user),
+      inviteCode: user.inviteCode || '',
+      invitedBy: user.invitedBy || '',
+      invitedByType: user.invitedByType || '',
+      adminUserCode: user.invitedByType === 'admin' || user.invitedByType === 'super' ? user.invitedBy : '',
+      createdAt: user.registeredAt,
+      lastActivityAt: user.lastActivityAt || user.registeredAt,
+      creditScore: currentCredit(user),
+    },
+  });
+});
+
+// ---- market detail / ohlcv / analysis (all computed server-side)
+async function marketSnapshot() {
+  try {
+    const stats = await loadCoinbaseStats();
+    const rows = symbols.map((symbol) => {
+      const pairId = resolveCoinbasePair(stats, symbol);
+      const item = pairId ? stats.get(pairId) : null;
+      const [name, color, soft, mark] = assets[symbol];
+      const last = Number(item?.last || seed[symbol][0]);
+      const open = Number(item?.open || last);
+      return {
+        symbol, name, color, soft, mark,
+        price: last,
+        change: open > 0 ? ((last - open) / open) * 100 : seed[symbol][1],
+        high: Number(item?.high || last * 1.03),
+        low: Number(item?.low || last * 0.97),
+        volume: Number(item?.volume || last * 28435),
+        pair: pairId ?? `${symbol}-USDT`,
+      };
+    });
+    return { rows, source: 'coinbase', live: true, message: '' };
+  } catch (error) {
+    return {
+      rows: fallbackMarkets(),
+      source: 'fallback',
+      live: false,
+      message: error instanceof Error ? error.message : 'Coinbase provider unavailable',
+    };
+  }
+}
+
+function dataStatusFor(snapshot) {
+  if (snapshot.source === 'coinbase') return snapshot.live === false ? 'delayed' : 'live';
+  return 'unavailable';
+}
+
+app.get('/api/markets/:symbol', async (req, res) => {
+  const symbol = String(req.params.symbol || '').toUpperCase();
+  if (!symbols.includes(symbol)) return res.status(404).json({ error: 'Unknown market symbol' });
+  const snapshot = await marketSnapshot();
+  const byVolume = [...snapshot.rows].sort((a, b) => b.volume - a.volume);
+  const row = snapshot.rows.find((item) => item.symbol === symbol);
+  res.json({
+    success: true,
+    market: {
+      ...row,
+      rank: byVolume.findIndex((item) => item.symbol === symbol) + 1,
+      marketCap: null, // Coinbase public stats do not report market cap — shown only when the provider supplies it.
+      status: dataStatusFor(snapshot),
+      source: snapshot.source,
+      lastUpdated: new Date().toISOString(),
+      providerMessage: snapshot.message || undefined,
+    },
+  });
+});
+
+async function loadCandles(base, interval) {
+  let pairId = `${base}-USDT`;
+  try {
+    const stats = await loadCoinbaseStats();
+    pairId = resolveCoinbasePair(stats, base) || `${base}-USD`;
+  } catch {
+    /* stats failed — try the default pair */
+  }
+  const granularity = intervalGranularity[interval];
+  const rows = await fetchCoinbase(`/products/${pairId}/candles?granularity=${granularity}`);
+  return {
+    pair: pairId,
+    source: 'coinbase',
+    data: rows
+      .map((row) => ({
+        time: Number(row[0]) * 1000,
+        low: Number(row[1]), high: Number(row[2]),
+        open: Number(row[3]), close: Number(row[4]), volume: Number(row[5]),
+      }))
+      .reverse()
+      .slice(-120),
+  };
+}
+
+app.get('/api/markets/:symbol/ohlcv', async (req, res) => {
+  const symbol = String(req.params.symbol || '').toUpperCase();
+  const interval = allowedIntervals.has(String(req.query.interval || '')) ? String(req.query.interval) : '1m';
+  if (!symbols.includes(symbol)) return res.status(404).json({ error: 'Unknown market symbol' });
+  try {
+    const candles = await loadCandles(symbol, interval);
+    res.set('Cache-Control', 'public, max-age=8');
+    res.json({ success: true, symbol, interval, ohlcv: candles.data, source: candles.source, status: 'live', lastUpdated: new Date().toISOString() });
+  } catch {
+    res.status(503).json({ success: false, error: 'Market candles temporarily unavailable from the provider.' });
+  }
+});
+
+// Technical analysis — every indicator is computed on the backend from live candles.
+app.get('/api/markets/:symbol/analysis', async (req, res) => {
+  const symbol = String(req.params.symbol || '').toUpperCase();
+  const interval = allowedIntervals.has(String(req.query.interval || '')) ? String(req.query.interval) : '5m';
+  if (!symbols.includes(symbol)) return res.status(404).json({ error: 'Unknown market symbol' });
+
+  let candles;
+  try {
+    candles = await loadCandles(symbol, interval);
+  } catch {
+    return res.status(503).json({ success: false, error: 'Analysis unavailable — the market provider is unreachable.' });
+  }
+  const closes = candles.data.map((candle) => candle.close);
+  const window = closes.slice(-60);
+  if (window.length < 5) return res.status(503).json({ success: false, error: 'Not enough market data for analysis yet.' });
+
+  const sma = (values, period) =>
+    values.length >= period ? values.slice(-period).reduce((sum, value) => sum + value, 0) / period : null;
+  const ema = (values, period) => {
+    if (values.length < period) return null;
+    const k = 2 / (period + 1);
+    let result = values.slice(0, period).reduce((sum, value) => sum + value, 0) / period;
+    for (const value of values.slice(period)) result = value * k + result * (1 - k);
+    return result;
+  };
+  const rsi = (values, period = 14) => {
+    if (values.length < period + 1) return null;
+    let gains = 0;
+    let losses = 0;
+    for (let i = 1; i <= period; i += 1) {
+      const delta = values[i] - values[i - 1];
+      gains += Math.max(0, delta);
+      losses += Math.max(0, -delta);
+    }
+    let avgGain = gains / period;
+    let avgLoss = losses / period;
+    for (let i = period + 1; i < values.length; i += 1) {
+      const delta = values[i] - values[i - 1];
+      avgGain = (avgGain * (period - 1) + Math.max(0, delta)) / period;
+      avgLoss = (avgLoss * (period - 1) + Math.max(0, -delta)) / period;
+    }
+    if (avgLoss === 0) return 100;
+    const rs = avgGain / avgLoss;
+    return 100 - 100 / (1 + rs);
+  };
+
+  const sma20 = sma(window, 20);
+  const sma50 = sma(window, 50);
+  const ema12 = ema(window, 12);
+  const ema26 = ema(window, 26);
+  const macdLine = ema12 != null && ema26 != null ? ema12 - ema26 : null;
+  const macdSeries = [];
+  if (window.length >= 26) {
+    for (let i = 26; i <= window.length; i += 1) {
+      const slice = window.slice(0, i);
+      const fast = ema(slice, 12);
+      const slow = ema(slice, 26);
+      if (fast != null && slow != null) macdSeries.push(fast - slow);
+    }
+  }
+  const macdSignal =
+    macdSeries.length >= 9 ? macdSeries.slice(-9).reduce((sum, value) => sum + value, 0) / 9 : null;
+  const momentum =
+    window.length >= 11
+      ? ((window[window.length - 1] - window[window.length - 11]) / window[window.length - 11]) * 100
+      : null;
+  const recent = candles.data.slice(-40);
+  const support = Math.min(...recent.map((candle) => candle.low));
+  const resistance = Math.max(...recent.map((candle) => candle.high));
+  const mean = window.reduce((sum, value) => sum + value, 0) / window.length;
+  const variance = window.reduce((sum, value) => sum + (value - mean) ** 2, 0) / window.length;
+  const volatility = mean > 0 ? (Math.sqrt(variance) / mean) * 100 : null;
+  const price = window[window.length - 1];
+  let trend = 'sideways';
+  if (sma20 != null && sma50 != null) {
+    trend = sma20 > sma50 * 1.001 ? 'uptrend' : sma20 < sma50 * 0.999 ? 'downtrend' : 'sideways';
+  } else {
+    trend = price > mean ? 'uptrend' : 'downtrend';
+  }
+
+  res.set('Cache-Control', 'public, max-age=15');
+  res.json({
+    success: true,
+    symbol,
+    interval,
+    analysis: {
+      price,
+      trend,
+      volatilityPercent: volatility != null ? Number(volatility.toFixed(3)) : null,
+      rsi14: rsi(window) != null ? Number(rsi(window).toFixed(2)) : null,
+      macd: macdLine != null ? Number(macdLine.toFixed(6)) : null,
+      macdSignal: macdSignal != null ? Number(macdSignal.toFixed(6)) : null,
+      macdHistogram: macdLine != null && macdSignal != null ? Number((macdLine - macdSignal).toFixed(6)) : null,
+      sma20: sma20 != null ? Number(sma20.toFixed(6)) : null,
+      sma50: sma50 != null ? Number(sma50.toFixed(6)) : null,
+      ema12: ema12 != null ? Number(ema12.toFixed(6)) : null,
+      ema26: ema26 != null ? Number(ema26.toFixed(6)) : null,
+      momentumPercent: momentum != null ? Number(momentum.toFixed(3)) : null,
+      support: Number(support.toFixed(6)),
+      resistance: Number(resistance.toFixed(6)),
+    },
+    status: 'live',
+    source: candles.source,
+    lastUpdated: new Date().toISOString(),
+  });
+});
+
+// ---- customer support tickets (withdrawals are handled through support only)
+const supportCategories = ['Withdrawal', 'Account', 'Order', 'Wallet', 'Documents', 'Other'];
+
+app.get('/api/support/tickets', requireAuth, (req, res) => {
+  const user = req.authUser;
+  res.json({ success: true, tickets: user.supportTickets || [], categories: supportCategories });
+});
+
+app.post('/api/support/tickets', requireAuth, (req, res) => {
+  const user = req.authUser;
+  const { category, subject, message } = req.body || {};
+  if (!supportCategories.includes(String(category || ''))) {
+    return res.status(422).json({ error: 'Choose a valid support category.' });
+  }
+  if (!String(message || '').trim()) {
+    return res.status(422).json({ error: 'Describe your request so support can help.' });
+  }
+  const ticket = {
+    id: `TCK-${Date.now().toString(36).toUpperCase()}`,
+    category: String(category),
+    subject: String(subject || `${String(category)} request`).slice(0, 120),
+    message: String(message).slice(0, 2000),
+    status: 'open',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    response: null,
+    request: null,
+  };
+  user.supportTickets = [ticket, ...(user.supportTickets || [])];
+  persist();
+  res.status(201).json({ success: true, message: 'Support request created. The team will respond on this ticket.', ticket });
+});
+
+// Withdrawal requests become support tickets — the website never executes payouts.
+app.post('/api/withdrawal/support', requireAuth, (req, res) => {
+  const user = req.authUser;
+  const { currency, amount, note } = req.body || {};
+  const cur = currency === 'USDT' ? 'USDT' : 'INR';
+  const amt = Number(amount);
+  if (amount !== undefined && (!Number.isFinite(amt) || amt <= 0)) {
+    return res.status(422).json({ error: 'Requested amount must be a positive number.' });
+  }
+  const available = cur === 'INR' ? user.wallet.realBalance : user.wallet.realUsdtBalance;
+  if (Number.isFinite(amt) && amt > available) {
+    return res.status(409).json({ error: `Requested amount exceeds your available ${cur} balance.` });
+  }
+  const ticket = {
+    id: `TCK-${Date.now().toString(36).toUpperCase()}`,
+    category: 'Withdrawal',
+    subject: `Withdrawal request${Number.isFinite(amt) ? ` — ${cur === 'INR' ? '₹' : '₮'}${amt.toLocaleString('en-IN')}` : ''}`,
+    message: String(note || `Customer requested a ${cur} withdrawal review.`).slice(0, 2000),
+    status: 'open',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    response: null,
+    request: { currency: cur, ...(Number.isFinite(amt) ? { amount: amt } : {}) },
+  };
+  user.supportTickets = [ticket, ...(user.supportTickets || [])];
+  persist();
+  res.status(201).json({
+    success: true,
+    message: 'Withdrawal request sent to Customer Support. You will be notified here once it is reviewed.',
+    ticket,
+  });
+});
+
+// ---- notifications (derived from the student's own backend data)
+app.get('/api/notifications', requireAuth, (req, res) => {
+  const user = req.authUser;
+  autoSettleOrders(user);
+  const items = [];
+  for (const order of (user.orders || []).slice(0, 20)) {
+    if (order.status === 'open' || !order.settledAt) continue;
+    items.push({
+      id: `ntf-order-${order.id}`,
+      kind: 'order',
+      title:
+        order.status === 'won'
+          ? `Order won — ${order.symbol}`
+          : order.status === 'lost'
+            ? `Order lost — ${order.symbol}`
+            : `Order cancelled — ${order.symbol}`,
+      message:
+        order.status === 'won'
+          ? `Payout ${order.currency === 'INR' ? '₹' : '₮'}${Math.floor(order.payout || 0).toLocaleString('en-IN')} credited at ${order.settledPercent ?? order.payoutPercent}%.`
+          : order.status === 'lost'
+            ? 'The scenario closed against your direction.'
+            : 'The order was refunded to your available balance.',
+      at: order.settledAt,
+    });
+  }
+  ensureTasks(user);
+  for (const task of user.tasks || []) {
+    if (task.status === 'completed' && task.completedAt) {
+      items.push({ id: `ntf-task-${task.id}`, kind: 'task', title: `Task completed — ${task.title}`, message: 'Nice work keeping your desk on track.', at: task.completedAt });
+    }
+  }
+  for (const ticket of user.supportTickets || []) {
+    items.push({
+      id: `ntf-ticket-${ticket.id}`,
+      kind: 'support',
+      title: ticket.response ? `Support replied — ${ticket.subject}` : `Ticket opened — ${ticket.subject}`,
+      message: ticket.response || 'Your request is with the support team.',
+      at: ticket.updatedAt,
+    });
+  }
+  items.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+  res.json({ success: true, notifications: items.slice(0, 10), unread: 0 });
+});
+
+// ---- documents catalog & invoice (values generated by the backend)
+app.get('/api/documents', requireAuth, (_req, res) => {
+  res.json({
+    success: true,
+    documents: [
+      { id: 'account-statement', type: 'statement', title: 'Account Statement', description: 'Complete transaction history with balance and frozen-funds breakdown.', endpoint: '/api/account/statement' },
+      { id: 'proof-of-account', type: 'proof', title: 'Proof of Account', description: 'Official verification document for your account status.', endpoint: '/api/account/proof' },
+      { id: 'account-agreement', type: 'agreement', title: 'Account Agreement', description: 'Terms, conditions and trading risk disclosure.', endpoint: '/api/account/agreement' },
+      { id: 'payout-agreement', type: 'payout-agreement', title: 'Agreement / Payout Terms', description: 'Payout, settlement and withdrawal review terms for your account.', endpoint: '/api/account/agreement?type=payout' },
+      { id: 'account-invoice', type: 'invoice', title: 'Invoice', description: 'Invoice for deposits and conversions credited to your account.', endpoint: '/api/account/invoice' },
+    ],
+  });
+});
+
+app.get('/api/account/invoice', (req, res) => {
+  const email = String(req.query.email || '').trim().toLowerCase();
+  if (!email) return res.status(400).json({ error: 'Email is required' });
+  const user = userDb.get(email);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  const w = user.wallet;
+  const now = new Date();
+  const periodStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+  const items = w.transactions
+    .filter((tx) => (tx.type === 'deposit' || tx.type === 'conversion') && tx.status === 'completed')
+    .slice(0, 25)
+    .map((tx, index) => ({
+      position: index + 1,
+      description: tx.title,
+      detail: tx.description,
+      date: tx.time,
+      amount: Number(tx.amount) || 0,
+      currency: tx.currency === 'USDT' ? 'USDT' : 'INR',
+    }));
+  const inrTotal = items.filter((i) => i.currency === 'INR').reduce((sum, i) => sum + i.amount, 0);
+  const usdtTotal = items.filter((i) => i.currency === 'USDT').reduce((sum, i) => sum + i.amount, 0);
+
+  res.json({
+    success: true,
+    invoice: {
+      invoiceId: `INV-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}-${String(user.id || 'ACCT').slice(0, 6)}`,
+      issuedAt: now.toISOString(),
+      periodStart,
+      periodEnd: now.toISOString(),
+      billTo: { name: user.name, email: user.email, phone: user.phone || '', userId: user.id || '', inviteCode: user.inviteCode || '' },
+      items,
+      totals: {
+        subtotalInr: Number(inrTotal.toFixed(2)),
+        subtotalUsdt: Number(usdtTotal.toFixed(2)),
+        platformFee: 0,
+        tax: 0,
+        totalInr: Number(inrTotal.toFixed(2)),
+        balanceDue: 0,
+      },
+      notes: 'This invoice summarises funds credited to your Mudrexx Earn account. Platform and settlement fees are ₹0 on this plan; withdrawal reviews are handled by Customer Support.',
+    },
+  });
+});
+
+// ---- NOVA copilot (backend answers from authoritative account + market data)
+function novaContext(user) {
+  autoSettleOrders(user);
+  ensureTasks(user);
+  const w = user.wallet;
+  return {
+    account: {
+      name: user.name,
+      email: user.email,
+      category: computeCategory(user),
+      status: user.status,
+      createdAt: user.registeredAt,
+      inviteCode: user.inviteCode,
+    },
+    wallet: {
+      realBalance: w.realBalance,
+      realUsdtBalance: w.realUsdtBalance,
+      frozenBalance: w.frozenBalance,
+      frozenUsdtBalance: w.frozenUsdtBalance,
+      demoBalance: w.demoBalance,
+      conversionRate: w.conversionRate,
+    },
+    credit: currentCredit(user),
+    orders: (user.orders || []).slice(0, 10),
+    tasks: (user.tasks || []).slice(0, 10),
+    tickets: (user.supportTickets || []).slice(0, 5),
+    markets: (marketCache || []).slice(0, 10).map((row) => ({
+      symbol: row.symbol,
+      price: row.price,
+      change: Number(Number(row.change).toFixed(2)),
+    })),
+  };
+}
+
+app.get('/api/nova/status', (_req, res) => {
+  res.json({
+    success: true,
+    nova: {
+      online: true,
+      assistant: 'NOVA',
+      model: process.env.GEMINI_API_KEY ? 'gemini' : 'nova-rulepack',
+      grounded: true,
+      topics: ['markets', 'market analysis', 'wallet', 'orders', 'tasks', 'documents', 'support', 'account'],
+      at: new Date().toISOString(),
+    },
+  });
+});
+
+app.post('/api/nova/chat', requireAuth, (req, res) => {
+  const user = req.authUser;
+  const message = String(req.body?.message || '').trim();
+  if (!message) return res.status(422).json({ error: 'Ask NOVA a question first.' });
+  const context = novaContext(user);
+  const lower = message.toLowerCase();
+  const inr = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+
+  let reply = '';
+  let sources = [];
+  if (/(market|price|btc|eth|sol|coin|chart|analysis|rsi|trend)/.test(lower)) {
+    const wanted = ['BTC', 'ETH', 'SOL', 'XRP'].find((sym) => lower.includes(sym.toLowerCase()));
+    const rows = context.markets;
+    const pick = rows.find((row) => row.symbol === wanted) || rows[0];
+    reply = pick
+      ? `${pick.symbol} is trading at $${pick.price.toLocaleString()} (${pick.change >= 0 ? '+' : ''}${pick.change}% over 24h) per the backend market feed. Open the Markets page for the full chart, RSI/MACD analysis and support/resistance levels.`
+      : 'The market feed is momentarily unavailable from the backend. Please retry in a moment — I never quote prices the backend has not confirmed.';
+    sources = ['market feed'];
+  } else if (/(wallet|balance|frozen|available|deposit)/.test(lower)) {
+    reply = `Your wallet: available ${inr(context.wallet.realBalance)} (plus ₮${context.wallet.realUsdtBalance.toLocaleString()} USDT), frozen ${inr(context.wallet.frozenBalance)}, and ${context.wallet.demoBalance.toLocaleString()} demo credits at a ${context.wallet.conversionRate} conversion rate. All figures come straight from your backend wallet snapshot.`;
+    sources = ['wallet'];
+  } else if (/(order|trade|position|win|lose)/.test(lower)) {
+    const open = context.orders.filter((order) => order.status === 'open');
+    reply = open.length
+      ? `You have ${open.length} active order(s): ${open.map((o) => `${o.symbol} ${o.side.toUpperCase()}`).join(', ')}. Frozen funds for these remain locked until settlement.`
+      : context.orders.length
+        ? `Your latest order was ${context.orders[0].symbol} ${context.orders[0].side.toUpperCase()} — status ${context.orders[0].status}. Check the Order History page for entry, settlement price and payout.`
+        : 'No orders yet. The Instant Order desk is the practice + order placement area once you are ready.';
+    sources = ['orders'];
+  } else if (/(task|todo|assignment)/.test(lower)) {
+    const pending = context.tasks.filter((task) => task.status !== 'completed').length;
+    reply = `You have ${pending} open task(s) on your desk. ${context.tasks[0] ? `The most recent is "${context.tasks[0].title}" (${context.tasks[0].status.replace('_', ' ')}).` : ''} Full details are on the Tasks page.`;
+    sources = ['tasks'];
+  } else if (/(document|statement|invoice|agreement|pdf)/.test(lower)) {
+    reply = 'Your profile documents area provides the Account Statement, Proof of Account, Account Agreement, Payout Terms and Invoices — every PDF is generated from backend data with a Download button.';
+    sources = ['documents'];
+  } else if (/(support|ticket|withdraw|withdrawal)/.test(lower)) {
+    reply =
+      'Withdrawals are reviewed through Customer Support. Raise a Withdrawal ticket from the Support page (or the Withdraw button in your Wallet) and the team will respond on the ticket. Latest ticket: ' +
+      (context.tickets[0] ? `"${context.tickets[0].subject}" (${context.tickets[0].status})` : 'none yet') +
+      '.';
+    sources = ['support'];
+  } else if (/(credit|score)/.test(lower)) {
+    reply = `Your credit score is ${context.credit.score} (${context.credit.status}), last updated ${new Date(context.credit.updatedAt).toLocaleString()}. The score is computed by the backend — it cannot be edited from the website.`;
+    sources = ['credit score'];
+  } else if (/(account|profile|who am i|my data)/.test(lower)) {
+    reply = `You are ${context.account.name} (${context.account.email}), category ${context.account.category}, account status ${context.account.status}, member since ${new Date(context.account.createdAt).toLocaleDateString()}. Invitation code ${context.account.inviteCode}.`;
+    sources = ['account'];
+  } else {
+    reply = 'I can help with markets and analysis, your wallet and frozen amounts, orders, tasks, documents, support tickets and account details. Ask me something like "What is my frozen amount?" or "How is BTC doing?"';
+    sources = [];
+  }
+
+  // Optional: route through Gemini when the backend holds a key (never exposed to the browser).
+  const geminiKey = process.env.GEMINI_API_KEY;
+  if (!geminiKey) {
+    return res.json({ success: true, reply, at: new Date().toISOString(), sources, model: 'nova-rulepack' });
+  }
+  const prompt = `You are NOVA, the assistant on the Mudrexx Earn student desk. Answer using ONLY the JSON context below. If the context lacks the answer, say so honestly. Keep replies under 120 words.\n\nContext: ${JSON.stringify(context)}\n\nStudent question: ${message}`;
+  fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+    signal: AbortSignal.timeout(8000),
+  })
+    .then((response) => response.json())
+    .then((body) => {
+      const text = body?.candidates?.[0]?.content?.parts?.[0]?.text;
+      res.json({ success: true, reply: String(text || reply).trim(), at: new Date().toISOString(), sources, model: 'gemini' });
+    })
+    .catch(() => {
+      res.json({ success: true, reply, at: new Date().toISOString(), sources, model: 'nova-rulepack' });
+    });
 });
 
 // ============================================================================

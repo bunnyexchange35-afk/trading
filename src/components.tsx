@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
-  ArrowDownLeft, ArrowRight, Award, BadgeCheck, Banknote, Check, CheckCircle2,
+  Activity, ArrowDownLeft, ArrowRight, Award, BadgeCheck, Banknote, Check, CheckCircle2,
   ChevronDown, CircleHelp, Clock3, Coins, ExternalLink, Headphones, Info, Link2,
-  Lock, LogOut, Menu, MessageCircle, Plus, RefreshCcw, Settings, ShieldCheck,
+  ListChecks, Lock, LogOut, Menu, MessageCircle, Plus, RefreshCcw, Settings, ShieldCheck,
   Sparkles, Unlock, User, Users, Wallet, X, Zap,
 } from 'lucide-react';
 import { useApp } from './app-context';
@@ -71,6 +71,8 @@ const links = [
   ['/trading', 'Trading'],
   ['/instant-order', 'Instant Order'],
   ['/deposit', 'Deposit'],
+  ['/tasks', 'Tasks'],
+  ['/orders', 'Orders'],
 ] as const;
 
 export function SiteHeader() {
@@ -219,6 +221,8 @@ export function SiteHeader() {
                     label="Wallet & Balances"
                     badge={frozen > 0 ? `🔒 ₹${frozen.toLocaleString()}` : undefined}
                   />
+                  <ProfileLink to="/orders" icon={<Activity size={17} />} label="Order history" />
+                  <ProfileLink to="/tasks" icon={<ListChecks size={17} />} label="My tasks" />
                   <ProfileLink to="/deposit" icon={<ArrowDownLeft size={17} />} label="Deposit funds" />
                   <ProfileLink to="/support" icon={<Headphones size={17} />} label="Support" />
                   <ProfileLink to="/community" icon={<Users size={17} />} label="Community" />

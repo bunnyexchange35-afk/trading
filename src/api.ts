@@ -13,6 +13,34 @@
  */
 
 import type { AuthProfile, FrozenFundItem, TradeOrder, User, UserWallet, WalletTransaction } from './types';
+import type {
+  CreditHistoryPoint,
+  CreditSnapshot,
+  DocumentCatalogItem,
+  MarketAnalysis,
+  MarketDetail,
+  NovaStatus,
+  OrderDeskConfig,
+  StudentNotification,
+  StudentTask,
+  SupportTicket,
+  TasksSummary,
+} from './types';
+
+// Re-export the shared domain types so pages can import them from this module.
+export type {
+  CreditHistoryPoint,
+  CreditSnapshot,
+  DocumentCatalogItem,
+  MarketAnalysis,
+  MarketDetail,
+  NovaStatus,
+  OrderDeskConfig,
+  StudentNotification,
+  StudentTask,
+  SupportTicket,
+  TasksSummary,
+};
 import type { MarketQuote } from './data';
 
 export const API_BASE: string = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
@@ -43,10 +71,57 @@ export function apiMessage(error: unknown): string {
     if (error.code === ACCESS_REQUIRED) {
       return 'This live desk is in private mode. Open a V2 source or access link, or paste an access code.';
     }
+    if (!error.message || error.message === 'Backend request failed.') {
+      return friendlyStatusMessage(error.status);
+    }
     return error.message;
   }
   if (error instanceof Error) return error.message;
   return 'Unexpected error';
+}
+
+/** Human-readable mapping for the HTTP statuses the desk handles cleanly. */
+export function friendlyStatusMessage(status: number): string {
+  switch (status) {
+    case 400:
+      return 'That request was missing required details. Check the form and try again.';
+    case 401:
+      return 'Your session has expired. Please sign in again.';
+    case 403:
+      return 'You do not have access to this action on your account.';
+    case 404:
+      return 'This service is not available on the backend yet.';
+    case 409:
+      return 'The backend rejected that request because it conflicts with your current account state.';
+    case 422:
+      return 'Some values need correcting before the backend can accept this request.';
+    case 429:
+      return 'Too many requests — please wait a moment and try again.';
+    case 500:
+      return 'The backend had an internal error. Please retry shortly.';
+    case 503:
+      return 'The backend or an upstream provider is temporarily unavailable.';
+    default:
+      return 'Backend request failed. Please try again.';
+  }
+}
+
+/**
+ * Expired/invalid session signal. app-context listens once and clears the
+ * local session (no automatic re-probe, so no auth loops).
+ */
+export const SESSION_EXPIRED_EVENT = 'mudrexx:unauthorized';
+let lastUnauthorizedSignal = 0;
+
+function signalUnauthorized() {
+  const now = Date.now();
+  if (now - lastUnauthorizedSignal < 5000) return; // debounce — one notice per burst
+  lastUnauthorizedSignal = now;
+  try {
+    window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT));
+  } catch {
+    /* non-browser context */
+  }
 }
 
 function readStoredToken(): string | null {
@@ -128,6 +203,7 @@ async function request<T>(path: string, init?: RequestInit, options?: RequestOpt
   }
 
   if (!response.ok || accessDenied) {
+    if (response.status === 401 && !accessDenied) signalUnauthorized();
     throw new ApiError(
       extracted.message || `Backend request failed (${response.status}).`,
       response.status,
@@ -205,6 +281,8 @@ export type WalletSummaryResponse = {
     frozenTotal?: number;
     frozenTotalUsdt?: number;
     openOrders?: number;
+    pendingAmount?: number;
+    pendingAmountUsdt?: number;
   };
   error?: string;
 };
@@ -672,6 +750,19 @@ export function mapBackendUser(data: unknown): User | null {
     inviteCode: pickString(nested.inviteCode),
     invitedBy: pickString(nested.invitedBy),
     invitedByType: nested.invitedByType === 'admin' || nested.invitedByType === 'user' ? nested.invitedByType : '',
+    id: pickString(nested.id, nested.userId),
+    username: pickString(nested.username),
+    status: pickString(nested.status, nested.accountStatus) || 'active',
+    category: pickString(nested.category, nested.userCategory),
+    creditScore: asRecord(nested.creditScore)
+      ? {
+          score: pickNumber(asRecord(nested.creditScore)!.score, 0),
+          status: pickString(asRecord(nested.creditScore)!.status),
+          updatedAt: pickString(asRecord(nested.creditScore)!.updatedAt, asRecord(nested.creditScore)!.at) || undefined,
+        }
+      : undefined,
+    adminUserCode: pickString(nested.adminUserCode) || undefined,
+    lastActivityAt: pickString(nested.lastActivityAt, nested.lastActivity) || undefined,
     wallet,
   };
 }
@@ -1031,4 +1122,289 @@ export async function getAccountProof(email: string): Promise<AccountProofRespon
 
 export async function getAccountAgreement(email: string): Promise<AccountAgreementResponse> {
   return request<AccountAgreementResponse>(`/api/account/agreement?email=${encodeURIComponent(email)}`);
+}
+
+// ============================================================================
+// STUDENT DESK EXTENSIONS — every value below is backend-controlled.
+// ============================================================================
+
+// ---- Instant Order desk configuration --------------------------------------
+
+export type OrderConfigResponse = {
+  success: boolean;
+  config?: OrderDeskConfig;
+  error?: string;
+};
+
+/**
+ * Loads the order desk configuration from the backend. Tries the combined
+ * `/api/order/config` first and falls back to the split endpoints
+ * (`/api/order/assets`, `/api/order/currencies`, `/api/order/durations`)
+ * when the combined route is not implemented by the connected backend.
+ */
+export async function getOrderConfig(): Promise<OrderDeskConfig> {
+  try {
+    const body = await request<OrderConfigResponse>('/api/order/config');
+    if (body?.config?.currencies?.length && body.config.durations?.length) return body.config;
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 401 || error.status === 403)) throw error;
+  }
+  const [assetsBody, currenciesBody, durationsBody] = await Promise.all([
+    request<{ success: boolean; assets?: OrderDeskConfig['assets'] }>('/api/order/assets').catch(() => null),
+    request<{ success: boolean; currencies?: OrderDeskConfig['currencies'] }>('/api/order/currencies').catch(() => null),
+    request<{ success: boolean; durations?: number[] }>('/api/order/durations').catch(() => null),
+  ]);
+  const assets = assetsBody?.assets ?? [];
+  const currencies = currenciesBody?.currencies ?? [];
+  const durations = durationsBody?.durations ?? [];
+  if (!assets.length || !currencies.length || !durations.length) {
+    throw new ApiError('Order configuration is not available from the backend.', 503);
+  }
+  return {
+    enabled: true,
+    accountTypes: ['real', 'demo'],
+    assets,
+    currencies,
+    durations,
+    payoutPercents: [],
+    defaultDuration: durations[0],
+    defaultPayoutPercent: 0,
+    settlement: { mode: 'backend', description: 'Order rules are controlled by the backend.', frozenUntilSettlement: true },
+  };
+}
+
+// ---- tasks -------------------------------------------------------------------
+
+export type TasksResponse = {
+  success: boolean;
+  tasks?: StudentTask[];
+  summary?: TasksSummary;
+  error?: string;
+};
+
+export async function getTasks(): Promise<TasksResponse> {
+  return request<TasksResponse>('/api/tasks');
+}
+
+// ---- credit score ------------------------------------------------------------
+
+export type CreditScoreResponse = {
+  success: boolean;
+  creditScore?: CreditSnapshot & { category?: string };
+  error?: string;
+};
+
+export type CreditHistoryResponse = {
+  success: boolean;
+  history?: CreditHistoryPoint[];
+  error?: string;
+};
+
+export async function getCreditScore(): Promise<CreditScoreResponse> {
+  return request<CreditScoreResponse>('/api/credit-score');
+}
+
+export async function getCreditScoreHistory(): Promise<CreditHistoryResponse> {
+  return request<CreditHistoryResponse>('/api/credit-score/history');
+}
+
+// ---- account snapshot (profile page) -----------------------------------------
+
+export type AccountSnapshot = {
+  id: string;
+  username: string;
+  name: string;
+  email: string;
+  phone: string;
+  status: string;
+  category: string;
+  inviteCode: string;
+  invitedBy: string;
+  invitedByType: string;
+  adminUserCode: string;
+  createdAt: string;
+  lastActivityAt: string;
+  creditScore: CreditSnapshot;
+};
+
+export type AccountSnapshotResponse = {
+  success: boolean;
+  account?: AccountSnapshot;
+  error?: string;
+};
+
+export async function getAccountSnapshot(): Promise<AccountSnapshotResponse> {
+  return request<AccountSnapshotResponse>('/api/user/account');
+}
+
+// ---- market detail / ohlcv / analysis ----------------------------------------
+
+export type MarketDetailResponse = {
+  success: boolean;
+  market?: MarketDetail;
+  error?: string;
+};
+
+export type OhlcvResponse = {
+  success: boolean;
+  symbol?: string;
+  interval?: string;
+  ohlcv?: Kline[];
+  status?: string;
+  lastUpdated?: string;
+  error?: string;
+};
+
+export type MarketAnalysisResponse = {
+  success: boolean;
+  symbol?: string;
+  interval?: string;
+  analysis?: MarketAnalysis;
+  status?: string;
+  source?: string;
+  lastUpdated?: string;
+  error?: string;
+};
+
+export async function getMarketDetail(symbol: string): Promise<MarketDetailResponse> {
+  return request<MarketDetailResponse>(`/api/markets/${encodeURIComponent(symbol)}`);
+}
+
+export async function getMarketOhlcv(symbol: string, interval = '5m'): Promise<OhlcvResponse> {
+  return request<OhlcvResponse>(
+    `/api/markets/${encodeURIComponent(symbol)}/ohlcv?interval=${encodeURIComponent(interval)}`
+  );
+}
+
+export async function getMarketAnalysis(symbol: string, interval = '5m'): Promise<MarketAnalysisResponse> {
+  return request<MarketAnalysisResponse>(
+    `/api/markets/${encodeURIComponent(symbol)}/analysis?interval=${encodeURIComponent(interval)}`
+  );
+}
+
+// ---- customer support tickets -------------------------------------------------
+
+export type SupportTicketsResponse = {
+  success: boolean;
+  tickets?: SupportTicket[];
+  categories?: string[];
+  error?: string;
+};
+
+export type SupportTicketResponse = {
+  success: boolean;
+  message?: string;
+  ticket?: SupportTicket;
+  error?: string;
+};
+
+export async function getSupportTickets(): Promise<SupportTicketsResponse> {
+  return request<SupportTicketsResponse>('/api/support/tickets');
+}
+
+export async function createSupportTicket(data: {
+  category: string;
+  subject?: string;
+  message: string;
+}): Promise<SupportTicketResponse> {
+  return post<SupportTicketResponse>('/api/support/tickets', data);
+}
+
+/** Withdrawals are never executed here — they become support requests. */
+export async function requestWithdrawalReview(data: {
+  currency: string;
+  amount?: number;
+  note?: string;
+}): Promise<SupportTicketResponse> {
+  return post<SupportTicketResponse>('/api/withdrawal/support', data);
+}
+
+// ---- notifications -------------------------------------------------------------
+
+export type NotificationsResponse = {
+  success: boolean;
+  notifications?: StudentNotification[];
+  unread?: number;
+  error?: string;
+};
+
+export async function getNotifications(): Promise<NotificationsResponse> {
+  return request<NotificationsResponse>('/api/notifications');
+}
+
+// ---- documents -------------------------------------------------------------------
+
+export type DocumentsCatalogResponse = {
+  success: boolean;
+  documents?: DocumentCatalogItem[];
+  error?: string;
+};
+
+export type AccountInvoiceItem = {
+  position: number;
+  description: string;
+  detail: string;
+  date: string;
+  amount: number;
+  currency: string;
+};
+
+export type AccountInvoice = {
+  invoiceId: string;
+  issuedAt: string;
+  periodStart: string;
+  periodEnd: string;
+  billTo: { name: string; email: string; phone: string; userId: string; inviteCode: string };
+  items: AccountInvoiceItem[];
+  totals: {
+    subtotalInr: number;
+    subtotalUsdt: number;
+    platformFee: number;
+    tax: number;
+    totalInr: number;
+    balanceDue: number;
+  };
+  notes: string;
+};
+
+export type AccountInvoiceResponse = {
+  success: boolean;
+  invoice?: AccountInvoice;
+  error?: string;
+};
+
+export async function getDocumentsCatalog(): Promise<DocumentsCatalogResponse> {
+  return request<DocumentsCatalogResponse>('/api/documents');
+}
+
+export async function getAccountInvoice(email: string): Promise<AccountInvoiceResponse> {
+  return request<AccountInvoiceResponse>(`/api/account/invoice?email=${encodeURIComponent(email)}`);
+}
+
+// ---- NOVA copilot ------------------------------------------------------------------
+
+export type NovaStatusResponse = {
+  success: boolean;
+  nova?: NovaStatus;
+  error?: string;
+};
+
+export type NovaChatResponse = {
+  success: boolean;
+  reply?: string;
+  at?: string;
+  sources?: string[];
+  model?: string;
+  error?: string;
+};
+
+export async function getNovaStatus(): Promise<NovaStatusResponse> {
+  return request<NovaStatusResponse>('/api/nova/status');
+}
+
+export async function sendNovaMessage(data: {
+  message: string;
+  history?: Array<{ role: 'user' | 'assistant'; content: string }>;
+}): Promise<NovaChatResponse> {
+  return post<NovaChatResponse>('/api/nova/chat', data);
 }

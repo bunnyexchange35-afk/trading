@@ -4,6 +4,7 @@ import {
   Landmark, LineChart, LockKeyhole, Play, ShieldCheck, Sparkles, TrendingUp, WalletCards,
 } from 'lucide-react';
 import { CoinIcon } from './components';
+import DashboardDesk from './DashboardDesk';
 import { INR_RATE, money } from './data';
 import { useMarket } from './market-context';
 import { useApp } from './app-context';
@@ -138,6 +139,8 @@ export default function Home() {
           <Play size={14} fill="currentColor" /> Watch 10s experience
         </button>
       </section>
+
+      {user && <DashboardDesk />}
 
       <section className="ticker-section">
         <div className="container">

@@ -6,7 +6,7 @@ import {
   Trophy, Wallet, X,
 } from 'lucide-react';
 import { CoinIcon } from './components';
-import { apiMessage, createOrder, listOrders, type WalletState } from './api';
+import { apiMessage, createOrder, getOrderConfig, listOrders, type OrderDeskConfig, type WalletState } from './api';
 import type { TradeOrder } from './types';
 import { ASSETS, INR_RATE, money } from './data';
 import { useMarket } from './market-context';
@@ -24,8 +24,10 @@ type ResultPopup = {
 
 export default function InstantOrder() {
   const [params, setParams] = useSearchParams();
-  const requested = (params.get('asset') || 'BTC').toUpperCase();
-  const [symbol, setSymbol] = useState(ASSETS.some((item) => item.symbol === requested) ? requested : 'BTC');
+  const requested = (params.get('asset') || '').toUpperCase();
+  const [config, setConfig] = useState<OrderDeskConfig | null>(null);
+  const [configError, setConfigError] = useState('');
+  const [symbol, setSymbol] = useState('BTC');
   const [interval, setIntervalValue] = useState('1m');
   const [side, setSide] = useState<'up' | 'down'>('up');
   const [currency, setCurrency] = useState<'INR' | 'USDT'>('INR');
@@ -39,6 +41,45 @@ export default function InstantOrder() {
   const market = quote(symbol);
   const { user, openAuth, addFrozenOrder, openConversionModal, notify, refreshUser } = useApp();
 
+  // Order desk configuration — every option (assets, currencies, durations,
+  // payouts, limits) comes from the backend. Nothing is hardcoded here.
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const loaded = await getOrderConfig();
+        if (!active) return;
+        setConfig(loaded);
+        setConfigError('');
+        const enabledAssets = loaded.assets.filter((item) => item.enabled !== false);
+        const symbols = enabledAssets.map((item) => item.symbol);
+        if (requested && symbols.includes(requested)) setSymbol(requested);
+        else if (!symbols.includes('BTC') && symbols.length) setSymbol(symbols[0]);
+        const firstCurrency = loaded.currencies.find((item) => item.enabled !== false);
+        if (firstCurrency) {
+          setCurrency(firstCurrency.code === 'USDT' ? 'USDT' : 'INR');
+          setAmount(String(firstCurrency.quickAmounts?.[1] ?? firstCurrency.quickAmounts?.[0] ?? firstCurrency.minAmount));
+        }
+        setDuration(loaded.defaultDuration ?? loaded.durations[0] ?? 60);
+        if (loaded.defaultPayoutPercent) setProfitTarget(loaded.defaultPayoutPercent);
+      } catch (error) {
+        if (active) setConfigError(apiMessage(error));
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [requested]);
+
+  // Only backend-enabled assets are offered on this desk.
+  const orderAssets = config
+    ? config.assets.filter((item) => item.enabled !== false && ASSETS.some((asset) => asset.symbol === item.symbol))
+    : [];
+  const enabledCurrencies = config ? config.currencies.filter((item) => item.enabled !== false) : [];
+  const currencyConfig = enabledCurrencies.find((item) => item.code === currency);
+  const durations = config?.durations ?? [];
+  const payouts = config?.payoutPercents ?? [];
+
   const chooseSymbol = (next: string) => {
     setSymbol(next);
     setParams({ asset: next });
@@ -49,10 +90,28 @@ export default function InstantOrder() {
       openAuth('signin');
       return;
     }
+    if (!config || !config.enabled) {
+      notify('Order desk unavailable', 'The backend has not enabled the order desk right now.', 'warning');
+      return;
+    }
 
     const orderAmount = Number(amount || 0);
     if (orderAmount <= 0) {
       notify('Invalid amount', 'Enter a valid order amount.', 'warning');
+      return;
+    }
+    if (currencyConfig) {
+      if (orderAmount < currencyConfig.minAmount) {
+        notify('Amount too low', `Minimum order for ${currency} is ${currency === 'INR' ? '₹' : '₮'}${currencyConfig.minAmount.toLocaleString('en-IN')} (backend rule).`, 'warning');
+        return;
+      }
+      if (orderAmount > currencyConfig.maxAmount) {
+        notify('Amount too high', `Maximum order for ${currency} is ${currency === 'INR' ? '₹' : '₮'}${currencyConfig.maxAmount.toLocaleString('en-IN')} (backend rule).`, 'warning');
+        return;
+      }
+    }
+    if (durations.length && !durations.includes(duration)) {
+      notify('Duration not allowed', 'Pick one of the backend-enabled durations.', 'warning');
       return;
     }
 
@@ -146,14 +205,22 @@ export default function InstantOrder() {
       </section>
 
       <section className="container order-shell">
+        {configError && (
+          <div className="order-config-error">
+            <AlertTriangle size={15} />
+            <span>
+              Order configuration is unavailable from the backend — order placement is disabled. {configError}
+            </span>
+          </div>
+        )}
         <div className="trade-panel">
           <header className="trade-header">
             <div className="pair-selector">
               <CoinIcon asset={market} size="lg" />
               <label>
                 <span>Selected market</span>
-                <select value={symbol} onChange={(event) => chooseSymbol(event.target.value)}>
-                  {ASSETS.map((asset) => (
+                <select value={symbol} onChange={(event) => chooseSymbol(event.target.value)} disabled={orderAssets.length === 0}>
+                  {(orderAssets.length ? orderAssets : [{ symbol, name: symbol, enabled: true }]).map((asset) => (
                     <option key={asset.symbol} value={asset.symbol}>
                       {asset.symbol} / USDT
                     </option>
@@ -267,34 +334,41 @@ export default function InstantOrder() {
 
             <div className="field-label">
               <span>2. Order amount</span>
-              <small>Min. {currency === 'INR' ? '₹100' : '1 USDT'}</small>
+              <small>
+                {currencyConfig
+                  ? `Min. ${currency === 'INR' ? '₹' : '₮'}${currencyConfig.minAmount.toLocaleString('en-IN')} · Max. ${(currencyConfig.maxAmount).toLocaleString('en-IN')} (backend rules)`
+                  : 'Limits come from the backend order configuration'}
+              </small>
             </div>
             <div className="amount-field">
               <span>{currency === 'INR' ? '₹' : '₮'}</span>
               <input
                 type="number"
-                min={currency === 'INR' ? 100 : 1}
+                min={currencyConfig?.minAmount ?? 0}
+                max={currencyConfig?.maxAmount}
                 value={amount}
                 onChange={(event) => setAmount(event.target.value)}
+                disabled={!config}
               />
               <div className="unit-select">
-                <button
-                  className={currency === 'INR' ? 'active' : ''}
-                  onClick={() => setCurrency('INR')}
-                >
-                  INR
-                </button>
-                <button
-                  className={currency === 'USDT' ? 'active' : ''}
-                  onClick={() => setCurrency('USDT')}
-                >
-                  USDT
-                </button>
+                {enabledCurrencies.length === 0 && <button className="active">{currency}</button>}
+                {enabledCurrencies.map((item) => (
+                  <button
+                    key={item.code}
+                    className={currency === item.code ? 'active' : ''}
+                    onClick={() => {
+                      setCurrency(item.code === 'USDT' ? 'USDT' : 'INR');
+                      setAmount(String(item.quickAmounts?.[1] ?? item.quickAmounts?.[0] ?? item.minAmount));
+                    }}
+                  >
+                    {item.code}
+                  </button>
+                ))}
               </div>
             </div>
 
             <div className="quick-amounts">
-              {(currency === 'INR' ? [500, 1000, 2500, 5000] : [10, 25, 50, 100]).map((value) => (
+              {(currencyConfig?.quickAmounts ?? []).map((value) => (
                 <button key={value} onClick={() => setAmount(String(value))}>
                   +{value}
                 </button>
@@ -307,7 +381,7 @@ export default function InstantOrder() {
                   <span>3. Duration</span>
                 </div>
                 <div className="choice-row">
-                  {[30, 60, 180, 300].map((value) => (
+                  {(durations.length ? durations : []).map((value) => (
                     <button
                       className={duration === value ? 'active' : ''}
                       key={value}
@@ -316,14 +390,15 @@ export default function InstantOrder() {
                       {value < 60 ? `${value}s` : `${value / 60}m`}
                     </button>
                   ))}
+                  {!durations.length && <small className="config-wait">Backend config…</small>}
                 </div>
               </div>
               <div>
                 <div className="field-label">
-                  <span>4. Target</span>
+                  <span>4. Target payout</span>
                 </div>
                 <div className="choice-row">
-                  {[3, 5, 10].map((value) => (
+                  {(payouts.length ? payouts : []).map((value) => (
                     <button
                       className={profitTarget === value ? 'active' : ''}
                       key={value}
@@ -332,6 +407,7 @@ export default function InstantOrder() {
                       {value}%
                     </button>
                   ))}
+                  {!payouts.length && <small className="config-wait">Backend config…</small>}
                 </div>
               </div>
             </div>
@@ -359,6 +435,7 @@ export default function InstantOrder() {
             <button
               className={`submit-order submit-${side}`}
               onClick={submitOrder}
+              disabled={!config || !config.enabled || !durations.length}
             >
               {side === 'up' ? <ArrowUp /> : <ArrowDown />} {side === 'up' ? 'BUY UP' : 'BUY DOWN'}{' '}
               <span>
@@ -404,68 +481,37 @@ function LiveChart({
 }) {
   const [candles, setCandles] = useState<Candle[]>([]);
   const [loading, setLoading] = useState(true);
-  const [streaming, setStreaming] = useState(false);
+  const [feedSource, setFeedSource] = useState('');
 
   useEffect(() => {
     let active = true;
     setLoading(true);
-    setStreaming(false);
+    setFeedSource('');
 
+    // Chart data comes exclusively from the backend gateway (/api/market/klines)
+    // — the browser never calls the market provider directly. The feed status
+    // label reflects exactly what the backend reports.
     const loadCandles = () => {
       fetch(`/api/market/klines?symbol=${symbol}&interval=${interval}`)
         .then((response) => response.json())
-        .then((body: { data: Candle[] }) => {
-          if (active && Array.isArray(body.data)) setCandles(body.data);
+        .then((body: { data?: Candle[]; source?: string }) => {
+          if (!active) return;
+          if (Array.isArray(body.data) && body.data.length) setCandles(body.data);
+          setFeedSource(body.source === 'coinbase' ? 'Backend live' : 'Backend cache');
         })
-        .catch(() => undefined)
+        .catch(() => {
+          if (active) setFeedSource('Unavailable');
+        })
         .finally(() => {
           if (active) setLoading(false);
         });
     };
 
     loadCandles();
-    const poller = window.setInterval(loadCandles, 15_000);
-    // Coinbase Exchange public WebSocket — subscribe to the ticker channel for
-    // every quote currency we support; the REST poller above stays the source
-    // of truth for candle history, this stream only nudges the live candle.
-    const candidates = ['USDT', 'USD', 'USDC'].map((quote) => `${symbol}-${quote}`);
-    const socket = new WebSocket('wss://ws-feed.exchange.coinbase.com');
-    socket.onopen = () => {
-      setStreaming(true);
-      socket.send(JSON.stringify({ type: 'subscribe', product_ids: candidates, channels: ['ticker'] }));
-    };
-    socket.onmessage = (event) => {
-      if (!active) return;
-      try {
-        const packet = JSON.parse(event.data) as {
-          type?: string;
-          price?: string;
-          time?: string;
-        };
-        if (packet.type !== 'ticker' || !packet.price) return;
-        const livePrice = Number(packet.price);
-        if (!Number.isFinite(livePrice) || livePrice <= 0) return;
-        setCandles((current) => {
-          if (!current.length) return current;
-          const last = current[current.length - 1];
-          const next = {
-            ...last,
-            close: livePrice,
-            high: Math.max(last.high, livePrice),
-            low: Math.min(last.low, livePrice),
-          };
-          return [...current.slice(0, -1), next];
-        });
-      } catch {
-        /* malformed stream packet */
-      }
-    };
-    socket.onerror = () => setStreaming(false);
-    socket.onclose = () => setStreaming(false);
+    const poller = window.setInterval(loadCandles, 10_000);
     return () => {
       active = false;
       window.clearInterval(poller);
-      socket.close();
     };
   }, [symbol, interval]);
 
@@ -503,8 +549,8 @@ function LiveChart({
               {value}
             </button>
           ))}
-          <span className={streaming ? 'stream-on' : ''}>
-            <i /> {streaming ? 'Streaming' : 'Polling'}
+          <span className={feedSource === 'Backend live' ? 'stream-on' : ''}>
+            <i /> {feedSource || 'Connecting'}
           </span>
         </div>
       </div>
@@ -859,6 +905,9 @@ function OrdersBoard() {
           <span className="eyebrow">ORDER BOARD</span>
           <h2>Your orders</h2>
           <p>Every order from this desk settles here — outcome, payout %, currency and time update live.</p>
+          <Link to="/orders" className="ob-history-link">
+            View full order history <ArrowRight size={13} />
+          </Link>
         </div>
         <div className="ob-wallet">
           <span><small>Deposit</small><strong>{walletState ? fmtInr(walletState.depositCredited) : '—'}{walletState && walletState.depositCreditedUsdt > 0 ? ` + ₮${Math.floor(walletState.depositCreditedUsdt).toLocaleString()}` : ''}</strong></span>
@@ -895,7 +944,7 @@ function OrdersBoard() {
                 ? `${remaining(order)}s left`
                 : `${order.durationSeconds}s`}
             </span>
-            <span className="ob-price">
+            <span className="ob-price" title={order.settledAt ? `Settled ${new Date(order.settledAt).toLocaleString()}${order.settledBy ? ` by ${order.settledBy}` : ''}` : undefined}>
               {order.entryPrice >= 1 ? order.entryPrice.toFixed(2) : order.entryPrice.toPrecision(4)}
               {' → '}
               {order.exitPrice != null

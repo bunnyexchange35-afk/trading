@@ -15,8 +15,11 @@ import Home from './Home';
 import Market from './Market';
 import InstantOrder from './InstantOrder';
 import Deposit from './Deposit';
+import TasksPage from './TasksPage';
+import OrdersPage from './OrdersPage';
 import { CommunityPage, ProfilePage, SupportPage, WalletPage } from './AccountPages';
 import AdminUsersPage from './AdminUsersPage';
+import { NovaChat } from './NovaChat';
 
 function SpaceBackdrop() {
   return (
@@ -111,6 +114,8 @@ function AppRoutes() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/instant-order" element={<InstantOrder />} />
         <Route path="/deposit" element={<Deposit />} />
+        <Route path="/tasks" element={<TasksPage />} />
+        <Route path="/orders" element={<OrdersPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/wallet" element={<WalletPage />} />
         <Route path="/support" element={<SupportPage />} />
@@ -123,6 +128,7 @@ function AppRoutes() {
       </Routes>
       <SiteFooter />
       <ContactButton />
+      <NovaChat />
       <AuthModal />
       <ConversionModal />
       <ToastStack />

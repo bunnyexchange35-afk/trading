@@ -17,19 +17,53 @@
     "condition_1_registration_is_invitation_only": {
       "rule": "The ONLY valid registration codes are the institute-assigned codes (ADMIN_CODES / SUPER_ADMIN_CODES). User referral codes are NOT accepted, codes are never issued by the app, and there is no place to obtain one. A participant receives their code from the institute.",
       "endpoint": "POST /api/auth/register",
-      "body": { "name": "Rahul Sharma", "email": "rahul@example.com", "phone": "+91 98765 43210", "preferredCurrency": "INR", "inviteCode": "<institute-assigned code>" },
-      "success_200": { "success": true, "message": "User registered successfully with ₹0.00 initial balance", "user": { "email": "rahul@example.com", "invitedBy": "ADMIN777", "invitedByType": "admin", "wallet": { "realBalance": 0, "demoBalance": 10000 } }, "token": "mx_<random>" },
-      "rejected_403": { "error": "Registration is by invitation only. Enter the code assigned to you." },
+      "body": {
+        "name": "Rahul Sharma",
+        "email": "rahul@example.com",
+        "phone": "+91 98765 43210",
+        "preferredCurrency": "INR",
+        "inviteCode": "<institute-assigned code>"
+      },
+      "success_200": {
+        "success": true,
+        "message": "User registered successfully with ₹0.00 initial balance",
+        "user": {
+          "email": "rahul@example.com",
+          "invitedBy": "ADMIN777",
+          "invitedByType": "admin",
+          "wallet": {
+            "realBalance": 0,
+            "demoBalance": 10000
+          }
+        },
+        "token": "mx_<random>"
+      },
+      "rejected_403": {
+        "error": "Registration is by invitation only. Enter the code assigned to you."
+      },
       "on_reject": "Missing code, unknown code, or another user's referral code -> 403, no account created."
     },
     "condition_2_sign_in_required": {
       "rule": "Every wallet / order / deposit / withdrawal / staking / profile call must carry the bearer token. A token only ever touches its own account.",
       "header": "Authorization: Bearer <token>",
       "token_source": "register response or POST /api/auth/login (login rotates the token, older token stops working)",
-      "protected_paths": ["/api/wallet/*", "/api/orders/*", "/api/deposit/*", "/api/withdraw/*", "/api/staking/*", "/api/user/*"],
-      "missing_token_401": { "error": "Sign in required. Sign up with an invitation code, then sign in and send Authorization: Bearer <token>." },
-      "other_account_403": { "error": "This session can only access its own account." },
-      "invalid_token_401": { "error": "Invalid or expired session token. Sign in again." }
+      "protected_paths": [
+        "/api/wallet/*",
+        "/api/orders/*",
+        "/api/deposit/*",
+        "/api/withdraw/*",
+        "/api/staking/*",
+        "/api/user/*"
+      ],
+      "missing_token_401": {
+        "error": "Sign in required. Sign up with an invitation code, then sign in and send Authorization: Bearer <token>."
+      },
+      "other_account_403": {
+        "error": "This session can only access its own account."
+      },
+      "invalid_token_401": {
+        "error": "Invalid or expired session token. Sign in again."
+      }
     },
     "roles": {
       "user": "Signed-in account. Trades, deposits, converts, views own wallet and orders only.",
@@ -39,61 +73,308 @@
   },
   "endpoints": {
     "public": {
-      "health": { "method": "GET", "path": "/api/health" },
-      "markets": { "method": "GET", "path": "/api/markets", "note": "32 assets, live Coinbase quotes, served natively by the worker" },
-      "klines": { "method": "GET", "path": "/api/market/klines?symbol=BTC&interval=1m", "intervals": ["1m", "5m", "15m", "1h"] },
-      "catalog": { "method": "GET", "path": "/api" },
-      "register": { "method": "POST", "path": "/api/auth/register", "see": "auth.condition_1_registration_is_invitation_only" },
-      "login": { "method": "POST", "path": "/api/auth/login", "body": { "email": "rahul@example.com" }, "returns": { "success": true, "user": {}, "token": "mx_<random>" } },
-      "me": { "method": "GET", "path": "/api/auth/me", "note": "No token -> { success:true, user:null, anonymous:true }; valid token -> the signed-in account; invalid token -> 401" }
+      "health": {
+        "method": "GET",
+        "path": "/api/health"
+      },
+      "markets": {
+        "method": "GET",
+        "path": "/api/markets",
+        "note": "32 assets, live Coinbase quotes, served natively by the worker"
+      },
+      "klines": {
+        "method": "GET",
+        "path": "/api/market/klines?symbol=BTC&interval=1m",
+        "intervals": [
+          "1m",
+          "5m",
+          "15m",
+          "1h"
+        ]
+      },
+      "catalog": {
+        "method": "GET",
+        "path": "/api"
+      },
+      "register": {
+        "method": "POST",
+        "path": "/api/auth/register",
+        "see": "auth.condition_1_registration_is_invitation_only"
+      },
+      "login": {
+        "method": "POST",
+        "path": "/api/auth/login",
+        "body": {
+          "email": "rahul@example.com"
+        },
+        "returns": {
+          "success": true,
+          "user": {},
+          "token": "mx_<random>"
+        }
+      },
+      "me": {
+        "method": "GET",
+        "path": "/api/auth/me",
+        "note": "No token -> { success:true, user:null, anonymous:true }; valid token -> the signed-in account; invalid token -> 401"
+      }
     },
     "user_bearer_required": {
-      "profile_update": { "method": "PUT", "path": "/api/user/profile", "body": { "name": "...", "phone": "...", "preferredCurrency": "INR" } },
-      "order_create": {
-        "method": "POST", "path": "/api/orders/create",
-        "body": { "symbol": "BTC", "side": "up", "amount": 1000, "currency": "INR", "accountType": "real", "durationSeconds": 60, "payoutPercent": 5 },
-        "note": "amount up to 500%, duration 5-86400s. Real orders escrow INR/USDT; accountType 'demo' escrows practice credits. Entry price captured live. Order lands on the Instant Order page board.",
-        "returns": { "success": true, "orderId": "ord-...", "order": { "status": "open", "payoutPercent": 5, "durationSeconds": 60, "entryPrice": 116430.2 }, "wallet": { "totalBalance": 0, "frozenBalance": 0, "creditTotal": 0, "depositCredited": 0 } }
+      "profile_update": {
+        "method": "PUT",
+        "path": "/api/user/profile",
+        "body": {
+          "name": "...",
+          "phone": "...",
+          "preferredCurrency": "INR"
+        }
       },
-      "order_list": { "method": "GET", "path": "/api/orders/list", "returns": "Every order for the signed-in user + wallet state; expired orders auto-settle against the live market move (UP wins if exit >= entry, DOWN wins if exit <= entry)" },
-      "order_status": { "method": "GET", "path": "/api/orders/status?orderId=...|email=..." },
-      "wallet_summary": { "method": "GET", "path": "/api/wallet/summary", "returns": { "realBalance": 0, "frozenBalance": 0, "demoBalance": 0, "depositCredited": 0, "creditTotal": 0, "totalBalance": 0, "frozenTotal": 0, "openOrders": 0 } },
-      "wallet_transactions": { "method": "GET", "path": "/api/wallet/transactions" },
-      "wallet_frozen": { "method": "GET", "path": "/api/wallet/frozen" },
-      "frozen_release": { "method": "POST", "path": "/api/wallet/frozen/release", "body": { "id": "ord-..." } },
-      "deposit_submit": { "method": "POST", "path": "/api/deposit/submit", "body": { "amount": 5000, "rail": "inr|usdt", "method": "upi", "reference": "UPI-884920" } },
-      "deposit_approve": { "method": "POST", "path": "/api/wallet/deposit/approve", "body": { "id": "dep-..." } },
-      "withdraw_submit": { "method": "POST", "path": "/api/withdraw/submit", "body": { "amount": 1000, "destination": "user@bank" } },
-      "convert_demo": { "method": "POST", "path": "/api/wallet/convert-demo", "body": { "demoCredits": 2000 }, "note": "10 credits = 1 INR" },
-      "claim_demo": { "method": "POST", "path": "/api/wallet/claim-demo", "body": { "amount": 5000 } },
-      "link_demo": { "method": "POST", "path": "/api/wallet/link-demo", "body": { "linked": true } },
-      "demo_adjust": { "method": "POST", "path": "/api/wallet/demo/adjust", "body": { "delta": -250 } },
-      "stake": { "method": "POST", "path": "/api/staking/stake", "body": { "asset": "ETH", "amount": 2000, "apy": 4.7 } }
+      "order_create": {
+        "method": "POST",
+        "path": "/api/orders/create",
+        "body": {
+          "symbol": "BTC",
+          "side": "up",
+          "amount": 1000,
+          "currency": "INR",
+          "accountType": "real",
+          "durationSeconds": 60,
+          "payoutPercent": 5
+        },
+        "note": "amount up to 500%, duration 5-86400s. Real orders escrow INR/USDT; accountType 'demo' escrows practice credits. Entry price captured live. Order lands on the Instant Order page board.",
+        "returns": {
+          "success": true,
+          "orderId": "ord-...",
+          "order": {
+            "status": "open",
+            "payoutPercent": 5,
+            "durationSeconds": 60,
+            "entryPrice": 116430.2
+          },
+          "wallet": {
+            "totalBalance": 0,
+            "frozenBalance": 0,
+            "creditTotal": 0,
+            "depositCredited": 0
+          }
+        }
+      },
+      "order_list": {
+        "method": "GET",
+        "path": "/api/orders/list",
+        "returns": "Every order for the signed-in user + wallet state; expired orders auto-settle against the live market move (UP wins if exit >= entry, DOWN wins if exit <= entry)"
+      },
+      "order_status": {
+        "method": "GET",
+        "path": "/api/orders/status?orderId=...|email=..."
+      },
+      "wallet_summary": {
+        "method": "GET",
+        "path": "/api/wallet/summary",
+        "returns": {
+          "realBalance": 0,
+          "frozenBalance": 0,
+          "demoBalance": 0,
+          "depositCredited": 0,
+          "creditTotal": 0,
+          "totalBalance": 0,
+          "frozenTotal": 0,
+          "openOrders": 0
+        }
+      },
+      "wallet_transactions": {
+        "method": "GET",
+        "path": "/api/wallet/transactions"
+      },
+      "wallet_frozen": {
+        "method": "GET",
+        "path": "/api/wallet/frozen"
+      },
+      "frozen_release": {
+        "method": "POST",
+        "path": "/api/wallet/frozen/release",
+        "body": {
+          "id": "ord-..."
+        }
+      },
+      "deposit_submit": {
+        "method": "POST",
+        "path": "/api/deposit/submit",
+        "body": {
+          "amount": 5000,
+          "rail": "inr|usdt",
+          "method": "upi",
+          "reference": "UPI-884920"
+        }
+      },
+      "deposit_approve": {
+        "method": "POST",
+        "path": "/api/wallet/deposit/approve",
+        "body": {
+          "id": "dep-..."
+        }
+      },
+      "withdraw_submit": {
+        "method": "POST",
+        "path": "/api/withdraw/submit",
+        "body": {
+          "amount": 1000,
+          "destination": "user@bank"
+        }
+      },
+      "convert_demo": {
+        "method": "POST",
+        "path": "/api/wallet/convert-demo",
+        "body": {
+          "demoCredits": 2000
+        },
+        "note": "10 credits = 1 INR"
+      },
+      "claim_demo": {
+        "method": "POST",
+        "path": "/api/wallet/claim-demo",
+        "body": {
+          "amount": 5000
+        }
+      },
+      "link_demo": {
+        "method": "POST",
+        "path": "/api/wallet/link-demo",
+        "body": {
+          "linked": true
+        }
+      },
+      "demo_adjust": {
+        "method": "POST",
+        "path": "/api/wallet/demo/adjust",
+        "body": {
+          "delta": -250
+        }
+      },
+      "stake": {
+        "method": "POST",
+        "path": "/api/staking/stake",
+        "body": {
+          "asset": "ETH",
+          "amount": 2000,
+          "apy": 4.7
+        }
+      }
     },
     "admin_and_super_admin_code_auth": {
       "note": "Authenticate with the code in the body/query — no token needed. These are the backend control commands.",
-      "role_check": { "method": "GET", "path": "/api/admin/role?code=<code>", "returns": { "success": true, "role": "admin | super" } },
-      "registered_users": { "method": "GET", "path": "/api/admin/users?code=<code>", "note": "Full user directory" },
+      "role_check": {
+        "method": "GET",
+        "path": "/api/admin/role?code=<code>",
+        "returns": {
+          "success": true,
+          "role": "admin | super"
+        }
+      },
+      "registered_users": {
+        "method": "GET",
+        "path": "/api/admin/users?code=<code>",
+        "note": "Full user directory"
+      },
       "users_by_invitation_code": {
-        "method": "GET", "path": "/api/admin/invited-users?code=<admin-code>&inviteCode=<optional specific code>",
+        "method": "GET",
+        "path": "/api/admin/invited-users?code=<admin-code>&inviteCode=<optional specific code>",
         "note": "Every account that registered through an invitation code; filter to one specific institute code with inviteCode. Returns balances, open orders count and a summary (byAdminCode / byReferral / combinedRealBalance)."
       },
-      "all_orders": { "method": "GET", "path": "/api/admin/orders/all?code=<code>", "returns": "Every order across all users with userEmail, live status, %, time, currency" },
+      "all_orders": {
+        "method": "GET",
+        "path": "/api/admin/orders/all?code=<code>",
+        "returns": "Every order across all users with userEmail, live status, %, time, currency"
+      },
       "order_control": {
-        "method": "POST", "path": "/api/admin/orders/control",
-        "body": { "code": "<code>", "orderId": "ord-...", "action": "win | lose | cancel", "percent": 85 },
+        "method": "POST",
+        "path": "/api/admin/orders/control",
+        "body": {
+          "code": "<code>",
+          "orderId": "ord-...",
+          "action": "win | lose | cancel",
+          "percent": 85
+        },
         "note": "Force any order's outcome ANYTIME (before or after expiry). percent overrides the payout % at settle time. win = stake + % returned; lose = stake consumed; cancel = refund.",
-        "returns": { "success": true, "role": "admin | super", "order": { "status": "won", "payout": 540 }, "wallet": {} }
+        "returns": {
+          "success": true,
+          "role": "admin | super",
+          "order": {
+            "status": "won",
+            "payout": 540
+          },
+          "wallet": {}
+        }
       },
       "order_update": {
-        "method": "POST", "path": "/api/admin/orders/update",
-        "body": { "code": "<code>", "orderId": "ord-...", "currency": "INR | USDT", "durationSeconds": 120, "payoutPercent": 50 },
+        "method": "POST",
+        "path": "/api/admin/orders/update",
+        "body": {
+          "code": "<code>",
+          "orderId": "ord-...",
+          "currency": "INR | USDT",
+          "durationSeconds": 120,
+          "payoutPercent": 50
+        },
         "note": "Change currency, time or payout % of an open order ANYTIME. All fields optional. Currency change moves the escrow between the INR and USDT books."
       },
       "wallet_adjust_super_admin_only": {
-        "method": "POST", "path": "/api/admin/wallet/adjust",
-        "body": { "code": "<super code>", "email": "user@example.com", "field": "real | realUsdt | frozen | frozenUsdt | demo", "delta": 10000 },
+        "method": "POST",
+        "path": "/api/admin/wallet/adjust",
+        "body": {
+          "code": "<super code>",
+          "email": "user@example.com",
+          "field": "real | realUsdt | frozen | frozenUsdt | demo",
+          "delta": 10000
+        },
         "note": "Direct wallet state command (deposit / credit / total / frozen). Never below zero. Shows in the user ledger as a neutral 'Balance Sync' entry. Admin (non-super) codes -> 403."
+      }
+    },
+    "student_desk": {
+      "note": "Student-facing extensions added to the Earn frontend contract. The Cloudflare worker passes these through to the bound backend (BACKEND service binding or BACKEND_ORIGIN, e.g. mudrexxback); server.mjs implements them for local dev. The frontend degrades gracefully (honest 'unavailable' states) when an endpoint is not implemented.",
+      "order_config": {
+        "config": "GET /api/order/config -> { success, config: { assets[], currencies[{code,enabled,minAmount,maxAmount,quickAmounts}], durations[], payoutPercents[], defaultDuration, defaultPayoutPercent, settlement{...} } }",
+        "assets": "GET /api/order/assets",
+        "currencies": "GET /api/order/currencies",
+        "durations": "GET /api/order/durations",
+        "rule": "The Instant Order desk only shows backend-enabled options. No payout %, assets, currencies, durations or limits are hardcoded in the frontend."
+      },
+      "tasks": "GET /api/tasks (auth) -> { success, tasks[{id,title,description,category,priority,status:pending|in_progress|completed|failed|overdue,dueDate,completedAt}], summary } — only the signed-in student's tasks",
+      "credit_score": {
+        "current": "GET /api/credit-score (auth) -> { success, creditScore{score,status:excellent|good|fair|poor,updatedAt,category} }",
+        "history": "GET /api/credit-score/history (auth) -> { success, history[{score,status,at}] }",
+        "rule": "Score and user category (New/Active/VIP/High Value/At Risk/Inactive/Restricted) are computed server-side; students cannot modify them."
+      },
+      "account_snapshot": "GET /api/user/account (auth) -> { success, account{ id, username, name, email, phone, status, category, inviteCode, invitedBy, invitedByType, adminUserCode, createdAt, lastActivityAt, creditScore } } — powers the profile page; ownership/admin assignment is read-only",
+      "markets": {
+        "detail": "GET /api/markets/:symbol -> { success, market{ ...quote, rank, marketCap|null, status: live|delayed|unavailable, source, lastUpdated } }",
+        "ohlcv": "GET /api/markets/:symbol/ohlcv?interval=1m|5m|15m|1h -> { success, ohlcv[...], status, lastUpdated }",
+        "analysis": "GET /api/markets/:symbol/analysis?interval=5m -> { success, analysis{ trend, rsi14, macd, macdSignal, macdHistogram, sma20, sma50, ema12, ema26, momentumPercent, volatilityPercent, support, resistance }, status, lastUpdated } — indicators computed on the backend only",
+        "rule": "The browser never calls a market provider directly; data freshness labels (Live/Delayed/Cached/Unavailable) come from the backend response."
+      },
+      "support": {
+        "tickets": "GET /api/support/tickets (auth) | POST /api/support/tickets {category: Withdrawal|Account|Order|Wallet|Documents|Other, subject?, message}",
+        "withdrawal": "POST /api/withdrawal/support {currency, amount?, note?} -> creates a Withdrawal ticket. The website NEVER executes payouts; the Wallet 'Withdraw' action routes the student here. 409 when the amount exceeds available balance."
+      },
+      "notifications": "GET /api/notifications (auth) -> { success, notifications[{id,kind,title,message,at}], unread } — derived from the student's own data",
+      "documents": {
+        "catalog": "GET /api/documents (auth) -> { success, documents[{id,type,title,description,endpoint}] }",
+        "invoice": "GET /api/account/invoice?email=... (auth) -> backend-generated invoice (items, totals, fees)",
+        "rule": "PDFs are rendered client-side from backend values only (statement / proof / agreement / payout terms / invoice download buttons)."
+      },
+      "nova": {
+        "status": "GET /api/nova/status -> { success, nova{online,assistant,model,grounded,topics,at} }",
+        "chat": "POST /api/nova/chat (auth) {message, history?} -> { success, reply, sources[], model } — NOVA answers from authoritative backend account + market data (optional GEMINI_API_KEY lives only on the backend)",
+        "topics": [
+          "markets",
+          "market analysis",
+          "wallet",
+          "orders",
+          "tasks",
+          "documents",
+          "support",
+          "account"
+        ]
       }
     }
   },
@@ -110,6 +391,10 @@
     "401": "sign-in required / invalid token",
     "403": "forbidden (no invitation code, unknown code, wrong account, non-super wallet command)",
     "404": "not found",
-    "409": "order already settled"
+    "409": "order already settled",
+    "422": "validation error (support category, message, withdrawal amount)",
+    "429": "too many requests",
+    "500": "backend internal error",
+    "503": "backend or upstream provider temporarily unavailable (e.g. market analysis while the provider is down)"
   }
 }

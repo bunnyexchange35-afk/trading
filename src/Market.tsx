@@ -1,10 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  ArrowDownRight, ArrowRight, ArrowUpRight, BarChart3, ChevronDown, Clock3, Info,
+  ArrowDownRight, ArrowRight, ArrowUpRight, BarChart3, ChevronDown, Clock3, Gauge, Info,
   Layers3, Lock, Search, ShieldCheck, Sparkles, Star, TrendingUp, Wallet,
 } from 'lucide-react';
 import { CoinIcon, PageHero } from './components';
+import {
+  apiMessage,
+  getMarketAnalysis,
+  getMarketDetail,
+  type MarketAnalysis,
+  type MarketDetail,
+} from './api';
 import { CATEGORIES, compact, INR_RATE, money } from './data';
 import { useMarket } from './market-context';
 import { useApp } from './app-context';
@@ -20,7 +27,7 @@ export default function Market() {
   const [category, setCategory] = useState<string>('All');
   const [expanded, setExpanded] = useState<string | null>('BTC');
   const [currency, setCurrency] = useState<'USDT' | 'INR'>('INR');
-  const { quotes, connected, source, refreshedAt, refresh } = useMarket();
+  const { quotes, connected, source, status: dataStatus, message: statusMessage, refreshedAt, refresh } = useMarket();
   const { user, openAuth, addStakingVault, notify } = useApp();
 
   useEffect(() => {
@@ -60,6 +67,9 @@ export default function Market() {
           <span className={connected ? 'connected' : ''}>
             <i /> {source}
           </span>
+          <span className={`data-status-chip dsc-${dataStatus}`}>
+            {dataStatus === 'live' ? 'Live' : dataStatus === 'cached' ? 'Cached' : dataStatus === 'delayed' ? 'Delayed' : dataStatus === 'connecting' ? 'Connecting' : 'Unavailable'}
+          </span>
           <small>
             {refreshedAt
               ? `Updated ${refreshedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
@@ -67,6 +77,11 @@ export default function Market() {
           </small>
           <button onClick={refresh}>Refresh</button>
         </div>
+        {statusMessage && dataStatus === 'unavailable' && (
+          <p className="market-status-note">
+            <Info size={13} /> {statusMessage} — prices shown are the last backend snapshot, clearly not live.
+          </p>
+        )}
       </PageHero>
       <section className="container market-shell">
         <div className="market-overview">
@@ -78,7 +93,7 @@ export default function Market() {
           <div>
             <span>Live feed</span>
             <strong>{connected ? 'Coinbase' : 'Warm cache'}</strong>
-            <small>Public Exchange data</small>
+            <small>Data status: {dataStatus}</small>
           </div>
           <div>
             <span>Spot fee</span>
@@ -222,15 +237,18 @@ export default function Market() {
                       </span>
                     </button>
                     {isExpanded && (
-                      <Foldout
-                        quote={quote}
-                        tab={tab}
-                        currency={currency}
-                        user={user}
-                        onAuth={() => openAuth('signin')}
-                        onStake={(asset, amount, apy) => addStakingVault(asset, amount, apy)}
-                        notify={notify}
-                      />
+                      <>
+                        <Foldout
+                          quote={quote}
+                          tab={tab}
+                          currency={currency}
+                          user={user}
+                          onAuth={() => openAuth('signin')}
+                          onStake={(asset, amount, apy) => addStakingVault(asset, amount, apy)}
+                          notify={notify}
+                        />
+                        {tab !== 'staking' && <MarketAnalysisPanel symbol={quote.symbol} />}
+                      </>
                     )}
                   </div>
                 );
@@ -253,6 +271,140 @@ export default function Market() {
         </div>
       </section>
     </main>
+  );
+}
+
+/**
+ * Backend market analysis panel — RSI, MACD, SMA/EMA, momentum, volatility,
+ * support/resistance and trend are all computed by the backend from live
+ * candles (GET /api/markets/:symbol/analysis + GET /api/markets/:symbol).
+ * The panel only renders what the backend returns.
+ */
+function MarketAnalysisPanel({ symbol }: { symbol: string }) {
+  const [analysis, setAnalysis] = useState<MarketAnalysis | null>(null);
+  const [detail, setDetail] = useState<MarketDetail | null>(null);
+  const [status, setStatus] = useState<string>('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setError('');
+    setAnalysis(null);
+    setDetail(null);
+    (async () => {
+      const [analysisRes, detailRes] = await Promise.allSettled([getMarketAnalysis(symbol), getMarketDetail(symbol)]);
+      if (!active) return;
+      if (analysisRes.status === 'fulfilled' && analysisRes.value.success && analysisRes.value.analysis) {
+        setAnalysis(analysisRes.value.analysis);
+        setStatus(analysisRes.value.status || analysisRes.value.source || '');
+      } else if (analysisRes.status === 'fulfilled') {
+        setError(analysisRes.value.error || 'Analysis is not available right now.');
+      } else {
+        setError(apiMessage(analysisRes.reason));
+      }
+      if (detailRes.status === 'fulfilled' && detailRes.value.success && detailRes.value.market) {
+        setDetail(detailRes.value.market);
+      }
+    })().finally(() => {
+      if (active) setLoading(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, [symbol]);
+
+  const trendLabel = analysis?.trend === 'uptrend' ? 'Up' : analysis?.trend === 'downtrend' ? 'Down' : 'Sideways';
+
+  return (
+    <div className="market-analysis-panel">
+      <div className="map-head">
+        <strong>
+          <Gauge size={14} /> Backend market analysis — {symbol}
+        </strong>
+        <span className={`data-status-chip dsc-${status === 'live' ? 'live' : status ? 'delayed' : 'unavailable'}`}>
+          {status || (loading ? 'loading' : 'unavailable')}
+        </span>
+      </div>
+
+      {loading && (
+        <p className="map-loading">
+          <Clock3 size={13} className="spin" /> Computing indicators on the backend…
+        </p>
+      )}
+
+      {!loading && error && (
+        <p className="map-error">
+          <Info size={13} /> {error}
+        </p>
+      )}
+
+      {!loading && analysis && (
+        <>
+          <div className="map-grid">
+            <span>
+              <small>Trend</small>
+              <b className={analysis.trend === 'uptrend' ? 'up' : analysis.trend === 'downtrend' ? 'down' : ''}>{trendLabel}</b>
+            </span>
+            <span>
+              <small>RSI (14)</small>
+              <b>{analysis.rsi14 != null ? analysis.rsi14.toFixed(1) : '—'}</b>
+            </span>
+            <span>
+              <small>MACD</small>
+              <b>{analysis.macd != null ? analysis.macd.toPrecision(4) : '—'}</b>
+            </span>
+            <span>
+              <small>MACD signal</small>
+              <b>{analysis.macdSignal != null ? analysis.macdSignal.toPrecision(4) : '—'}</b>
+            </span>
+            <span>
+              <small>SMA 20</small>
+              <b>{analysis.sma20 != null ? money(analysis.sma20, 'USD', 4) : '—'}</b>
+            </span>
+            <span>
+              <small>SMA 50</small>
+              <b>{analysis.sma50 != null ? money(analysis.sma50, 'USD', 4) : '—'}</b>
+            </span>
+            <span>
+              <small>EMA 12</small>
+              <b>{analysis.ema12 != null ? money(analysis.ema12, 'USD', 4) : '—'}</b>
+            </span>
+            <span>
+              <small>EMA 26</small>
+              <b>{analysis.ema26 != null ? money(analysis.ema26, 'USD', 4) : '—'}</b>
+            </span>
+            <span>
+              <small>Momentum</small>
+              <b className={(analysis.momentumPercent ?? 0) >= 0 ? 'up' : 'down'}>
+                {analysis.momentumPercent != null ? `${analysis.momentumPercent >= 0 ? '+' : ''}${analysis.momentumPercent.toFixed(2)}%` : '—'}
+              </b>
+            </span>
+            <span>
+              <small>Volatility</small>
+              <b>{analysis.volatilityPercent != null ? `${analysis.volatilityPercent.toFixed(2)}%` : '—'}</b>
+            </span>
+            <span>
+              <small>Support</small>
+              <b className="up">{money(analysis.support, 'USD', 4)}</b>
+            </span>
+            <span>
+              <small>Resistance</small>
+              <b className="down">{money(analysis.resistance, 'USD', 4)}</b>
+            </span>
+          </div>
+          <div className="map-meta">
+            {detail?.rank != null && <span>Volume rank #{detail.rank}</span>}
+            {detail?.marketCap != null && <span>Market cap {compact(detail.marketCap)}</span>}
+            {detail?.lastUpdated && (
+              <span>Last updated {new Date(detail.lastUpdated).toLocaleTimeString()}</span>
+            )}
+            <span>Indicators computed server-side · OHLCV via the backend gateway</span>
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
