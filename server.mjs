@@ -1,4 +1,5 @@
 import express from 'express';
+import compression from 'compression';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -7,6 +8,21 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const port = Number(process.env.PORT || 8080);
+
+// ============================================================================
+// RESPONSE OPTIMIZATION — compression + cache policy
+// ============================================================================
+// Gzip/deflate every compressible response over 512 bytes. The market JSON and
+// the built JS/CSS chunks ship ~3-4x smaller, which is the single biggest
+// lever on response time for clients on mobile networks.
+app.use(compression({ threshold: 512, level: 6 }));
+
+// Vite emits content-hashed filenames under /assets — safe to cache immutably
+// for a year. index.html stays uncacheable so deploys are picked up instantly.
+app.use('/assets', (_req, res, next) => {
+  res.set('Cache-Control', 'public, max-age=31536000, immutable');
+  next();
+});
 const symbols = [
   'BTC', 'ETH', 'SOL', 'XRP', 'DOGE', 'ADA', 'LTC', 'LINK',
   'AVAX', 'DOT', 'POL', 'UNI', 'AAVE', 'ATOM', 'XLM', 'SHIB',
@@ -2536,9 +2552,11 @@ app.post('/api/nova/chat', requireAuth, (req, res) => {
 // 9. CLIENT SPA FALLBACK & STATIC SERVING
 // ============================================================================
 
-app.use(express.static(path.join(__dirname, 'dist'), { maxAge: '1d', index: false }));
+app.use(express.static(path.join(__dirname, 'dist'), { index: false }));
 app.get('*', (req, res, next) => {
   if (req.path.startsWith('/api/')) return next();
+  // Never cache the HTML shell — it references hashed assets that change per deploy.
+  res.set('Cache-Control', 'no-cache');
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 app.use((_req, res) => res.status(404).json({ error: 'Endpoint not found' }));

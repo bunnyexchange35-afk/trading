@@ -18,6 +18,7 @@
     "node": ">=20"
   },
   "dependencies": {
+    "compression": "^1.8.1",
     "express": "^4.21.2",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
@@ -27,6 +28,7 @@
     "react-router-dom": "^7.1.1"
   },
   "devDependencies": {
+    "@types/compression": "^1.8.1",
     "@types/express": "^5.0.0",
     "@types/node": "^22.10.5",
     "@types/react": "^18.3.18",

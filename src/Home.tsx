@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import {
   ArrowRight, BarChart3, Blocks, Check, ChevronRight, CircleDollarSign, Clock3, Globe2,
-  Landmark, LineChart, LockKeyhole, Play, ShieldCheck, Sparkles, TrendingUp, WalletCards,
+  Landmark, LineChart, LockKeyhole, ShieldCheck, Sparkles, TrendingUp, WalletCards,
 } from 'lucide-react';
 import { CoinIcon } from './components';
 import DashboardDesk from './DashboardDesk';
@@ -135,9 +135,6 @@ export default function Home() {
             </div>
           </div>
         </div>
-        <button className="watch-intro" onClick={() => window.dispatchEvent(new Event('replay-intro'))}>
-          <Play size={14} fill="currentColor" /> Watch 10s experience
-        </button>
       </section>
 
       {user && <DashboardDesk />}

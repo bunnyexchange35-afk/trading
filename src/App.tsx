@@ -6,7 +6,6 @@ import {
   AuthModal,
   ContactButton,
   ConversionModal,
-  EntryExperience,
   SiteFooter,
   SiteHeader,
   ToastStack,
@@ -39,17 +38,6 @@ function RouteFallback() {
   );
 }
 
-function SpaceBackdrop() {
-  return (
-    <div className="space-backdrop" aria-hidden="true">
-      <span className="stars stars-a" />
-      <span className="stars stars-b" />
-      <span className="nebula nebula-a" />
-      <span className="nebula nebula-b" />
-    </div>
-  );
-}
-
 function ScrollToTop() {
   const location = useLocation();
   useEffect(() => {
@@ -66,12 +54,11 @@ function ScrollToTop() {
 function IdleRoutePrefetch() {
   useEffect(() => {
     const prefetch = () => {
+      // Only the two most-likely next destinations are warmed. The heavy
+      // chunks (AccountPages + the jsPDF stack) are fetched on demand so a
+      // first visit never competes with rendering for bandwidth.
       void import('./Market');
       void import('./InstantOrder');
-      void import('./OrdersPage');
-      void import('./TasksPage');
-      void import('./Deposit');
-      void import('./AccountPages');
     };
     const ric = (window as Window & { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback;
     if (ric) {
@@ -149,7 +136,6 @@ function AppRoutes() {
       <ScrollToTop />
       <NormalizeRoute />
       <IdleRoutePrefetch />
-      <EntryExperience />
       <SiteHeader />
       <Suspense fallback={<RouteFallback />}>
         <Routes>
@@ -185,17 +171,12 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <div className="space-app">
-      <SpaceBackdrop />
-      <div className="space-content">
-        <BrowserRouter>
-          <AppProvider>
-            <MarketProvider>
-              <AppRoutes />
-            </MarketProvider>
-          </AppProvider>
-        </BrowserRouter>
-      </div>
-    </div>
+    <BrowserRouter>
+      <AppProvider>
+        <MarketProvider>
+          <AppRoutes />
+        </MarketProvider>
+      </AppProvider>
+    </BrowserRouter>
   );
 }

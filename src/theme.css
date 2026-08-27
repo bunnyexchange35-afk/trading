@@ -1,8 +1,9 @@
 /* ============================================================================
-   MUDREXX SPACE / ANIMATION THEME
-   Futuristic night-sky theme: deep space gradients, animated starfields,
-   glowing nebula, animated gradient brand accents and motion on cards.
-   This file is loaded after styles.css and intentionally overrides it.
+   MUDREXX STATIC THEME (customised)
+   Flat, motion-free theme: electric lime on near-black with mint/red accents.
+   Loads after styles.css and intentionally overrides it. No keyframe loops,
+   no starfield/nebula layers, no shimmer — zero continuous repaint work, so
+   the main thread stays free for rendering and data updates.
    ============================================================================ */
 
 :root {
@@ -30,113 +31,18 @@
 }
 
 /* ---------------------------------------------------------------- backdrop */
-html {
+/* One flat, static page colour — painted once, never repainted by motion. */
+html,
+body {
   background: var(--space-bg) !important;
 }
 
 body {
-  background: var(--space-bg) !important;
   color: var(--ink) !important;
 }
 
 #root {
-  position: relative;
   min-height: 100vh;
-}
-
-.space-app {
-  position: relative;
-  min-height: 100vh;
-  overflow-x: hidden;
-}
-
-.space-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  overflow: hidden;
-  background:
-    radial-gradient(1200px 700px at 78% -8%, rgba(87, 215, 255, 0.16), transparent 60%),
-    radial-gradient(1000px 800px at 12% 8%, rgba(139, 108, 255, 0.18), transparent 55%),
-    radial-gradient(900px 900px at 88% 88%, rgba(255, 93, 241, 0.12), transparent 55%),
-    linear-gradient(180deg, #04020e 0%, #060313 42%, #080415 100%);
-}
-
-.space-content {
-  position: relative;
-  z-index: 1;
-}
-
-.stars {
-  position: absolute;
-  inset: -100px;
-  background-repeat: repeat;
-  will-change: transform, opacity;
-}
-.stars-a {
-  background-image:
-    radial-gradient(1.5px 1.5px at 10% 12%, rgba(255, 255, 255, 0.9), transparent 50%),
-    radial-gradient(1px 1px at 32% 34%, rgba(255, 255, 255, 0.7), transparent 50%),
-    radial-gradient(2px 2px at 55% 22%, rgba(160, 220, 255, 0.9), transparent 50%),
-    radial-gradient(1px 1px at 72% 64%, rgba(255, 255, 255, 0.65), transparent 50%),
-    radial-gradient(1.5px 1.5px at 88% 42%, rgba(210, 190, 255, 0.85), transparent 50%),
-    radial-gradient(1px 1px at 18% 74%, rgba(255, 255, 255, 0.75), transparent 50%),
-    radial-gradient(1px 1px at 46% 88%, rgba(140, 230, 255, 0.7), transparent 50%),
-    radial-gradient(2px 2px at 66% 92%, rgba(255, 255, 255, 0.8), transparent 50%);
-  background-size: 520px 520px;
-  opacity: 0.75;
-  animation: starTwinkle 5s ease-in-out infinite alternate, starDrift 90s linear infinite;
-}
-.stars-b {
-  background-image:
-    radial-gradient(1px 1px at 22% 16%, rgba(255, 255, 255, 0.9), transparent 50%),
-    radial-gradient(1.5px 1.5px at 44% 58%, rgba(170, 150, 255, 0.8), transparent 50%),
-    radial-gradient(1px 1px at 68% 30%, rgba(255, 255, 255, 0.7), transparent 50%),
-    radial-gradient(1px 1px at 82% 76%, rgba(140, 230, 255, 0.9), transparent 50%),
-    radial-gradient(1.5px 1.5px at 95% 12%, rgba(255, 255, 255, 0.8), transparent 50%),
-    radial-gradient(1px 1px at 8% 88%, rgba(230, 200, 255, 0.8), transparent 50%);
-  background-size: 780px 780px;
-  opacity: 0.55;
-  animation: starTwinkle 6.5s ease-in-out infinite alternate-reverse, starDrift 120s linear infinite reverse;
-}
-
-.nebula {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(70px);
-  opacity: 0.5;
-  mix-blend-mode: screen;
-}
-.nebula-a {
-  width: 620px;
-  height: 620px;
-  top: -220px;
-  left: -140px;
-  background: radial-gradient(circle, rgba(195, 245, 60, 0.3), rgba(53, 217, 168, 0.08) 55%, transparent 70%);
-  animation: nebulaDrift 24s ease-in-out infinite;
-}
-.nebula-b {
-  width: 720px;
-  height: 720px;
-  right: -240px;
-  bottom: -260px;
-  background: radial-gradient(circle, rgba(139, 108, 255, 0.32), rgba(53, 217, 168, 0.06) 55%, transparent 70%);
-  animation: nebulaDrift 30s ease-in-out infinite reverse;
-}
-
-@keyframes starTwinkle {
-  0% { opacity: 0.45; }
-  50% { opacity: 0.85; }
-  100% { opacity: 0.5; }
-}
-@keyframes starDrift {
-  from { transform: translate3d(0, 0, 0); }
-  to { transform: translate3d(0, -220px, 0); }
-}
-@keyframes nebulaDrift {
-  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
-  50% { transform: translate3d(40px, -30px, 0) scale(1.08); }
 }
 
 /* ------------------------------------------------------------ global text */
@@ -152,8 +58,7 @@ body, button, input, select, textarea {
 .hero-copy h1,
 .order-heading h1,
 .aviator-heading h1,
-.community-feature h2,
-.entry-copy h1 {
+.community-feature h2 {
   text-shadow: 0 0 36px rgba(139, 108, 255, 0.25);
 }
 
@@ -164,7 +69,6 @@ body, button, input, select, textarea {
   background-clip: text;
   -webkit-text-fill-color: transparent;
   color: transparent;
-  animation: brandShimmer 6s linear infinite;
   background-size: 220% 100%;
 }
 .brand-light .brand-copy b {
@@ -172,9 +76,6 @@ body, button, input, select, textarea {
 }
 .brand-light .brand-copy em {
   color: transparent;
-}
-@keyframes brandShimmer {
-  to { background-position: 220% 0; }
 }
 
 .eyebrow,
@@ -340,14 +241,9 @@ body, button, input, select, textarea {
 .hero-copy h1 em {
   color: #8b6cff !important;
   text-shadow: 0 0 28px rgba(139, 108, 255, 0.7);
-  animation: heroPulse 3s ease-in-out infinite;
 }
 .hero-copy > p {
   color: #a9a2c8 !important;
-}
-@keyframes heroPulse {
-  0%, 100% { text-shadow: 0 0 18px rgba(139, 108, 255, 0.55); }
-  50% { text-shadow: 0 0 34px rgba(139, 108, 255, 0.95); }
 }
 .hero-visual {
   filter: drop-shadow(0 30px 70px rgba(0, 0, 0, 0.55));
@@ -355,11 +251,6 @@ body, button, input, select, textarea {
 .portfolio-card {
   background: linear-gradient(158deg, rgba(30, 22, 66, 0.92), rgba(13, 9, 34, 0.96)) !important;
   box-shadow: 0 30px 90px rgba(0, 0, 0, 0.65), 0 0 50px rgba(139, 108, 255, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
-  animation: spaceCardFloat 7s ease-in-out infinite;
-}
-@keyframes spaceCardFloat {
-  0%, 100% { transform: translate(-50%, -50%) rotateY(-8deg) rotateX(3deg) translateY(0); }
-  50% { transform: translate(-50%, -50%) rotateY(-8deg) rotateX(3deg) translateY(-16px); }
 }
 .portfolio-card > small,
 .hero-profit-card small,
@@ -374,7 +265,6 @@ body, button, input, select, textarea {
 .floating-token {
   background: rgba(18, 13, 39, 0.92) !important;
   border-color: rgba(255, 255, 255, 0.1) !important;
-  animation: chipFloat 5s ease-in-out infinite;
 }
 .hero-profit-card em {
   background: var(--green-soft) !important;
@@ -425,7 +315,6 @@ body, button, input, select, textarea {
   width: 240px;
   height: 240px;
   background: radial-gradient(circle, rgba(87, 215, 255, 0.12), transparent 65%);
-  animation: glowDrift 8s ease-in-out infinite;
 }
 .product-icon,
 .spot-art,
@@ -506,11 +395,6 @@ body, button, input, select, textarea {
     radial-gradient(500px 300px at 80% 10%, rgba(87, 215, 255, 0.25), transparent 60%) !important;
   border: 1px solid rgba(255, 255, 255, 0.12);
   box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55), 0 0 70px rgba(139, 108, 255, 0.2);
-  animation: ctaPulse 5s ease-in-out infinite;
-}
-@keyframes ctaPulse {
-  0%, 100% { box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55), 0 0 60px rgba(139, 108, 255, 0.18); }
-  50% { box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55), 0 0 90px rgba(139, 108, 255, 0.34); }
 }
 
 /* footer */
@@ -1240,8 +1124,7 @@ textarea::placeholder {
 /* ------------------------------------------------------------- headings */
 .section-heading h2,
 .section-label,
-.community-feature h2,
-.entry-copy h1 {
+.community-feature h2 {
   color: #fff !important;
   text-shadow: 0 0 32px rgba(139, 108, 255, 0.3);
 }
@@ -1249,25 +1132,6 @@ textarea::placeholder {
 .section-label span,
 .community-feature p {
   color: #a9a2c8 !important;
-}
-.exchange-card-top .brand-copy b,
-.exchange-card-top .brand-copy em {
-  -webkit-text-fill-color: initial !important;
-  color: #fff !important;
-  background: none !important;
-  animation: none !important;
-}
-.exchange-card-top .brand-copy em {
-  color: #7ce4a4 !important;
-}
-.exchange-topbar .brand-copy b,
-.exchange-topbar .brand-copy em {
-  -webkit-text-fill-color: initial !important;
-  color: #fff !important;
-  background: none !important;
-}
-.exchange-topbar .brand-copy em {
-  color: #90d8ff !important;
 }
 
 /* --------------------------------------------------------- coin badges */
@@ -1298,50 +1162,8 @@ textarea::placeholder {
   color: #fff;
 }
 
-/* ------------------------------------------------- animations on cards */
-.market-card,
-.trade-panel,
-.order-form-card,
-.deposit-main-card,
-.settings-card,
-.wallet-stat-card,
-.frozen-item-card,
-.faq-card,
-.community-grid article {
-  animation: fadeUp 0.5s ease both;
-}
-.product-card {
-  animation: cardReveal 0.7s ease both;
-}
-.product-card:nth-child(2) {
-  animation-delay: 0.12s;
-}
-.product-card:nth-child(3) {
-  animation-delay: 0.24s;
-}
-.market-row {
-  transition: background 0.2s ease, transform 0.2s ease;
-}
-.market-row:hover {
-  transform: translateX(4px);
-}
 .multi-target {
   color: #b9a2ff !important;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .space-backdrop,
-  .portfolio-card,
-  .product-card,
-  .cta-card,
-  .brand-copy b,
-  .brand-copy em,
-  .hero-copy h1 em,
-  .nebula,
-  .stars-a,
-  .stars-b {
-    animation: none !important;
-  }
 }
 
 /* ------------------------------------------- remaining small light chips */
@@ -1386,38 +1208,6 @@ textarea::placeholder {
 .cta-spark {
   background: rgba(255, 255, 255, 0.1) !important;
   color: #eef1ff !important;
-}
-.entry-top button {
-  background: rgba(255, 255, 255, 0.08) !important;
-  border-color: rgba(255, 255, 255, 0.18) !important;
-}
-.entry-progress {
-  background: rgba(255, 255, 255, 0.1) !important;
-}
-.entry-progress span {
-  background: linear-gradient(90deg, #8b6cff, #57d7ff) !important;
-  box-shadow: 0 0 14px rgba(139, 108, 255, 0.8) !important;
-}
-.exchange-nav-pills span {
-  color: #b9b3d8 !important;
-}
-.exchange-nav-pills span.active,
-.exchange-connected {
-  color: #d9caff !important;
-}
-.exchange-nav-pills span.active {
-  background: rgba(139, 108, 255, 0.16) !important;
-  border-color: rgba(139, 108, 255, 0.24) !important;
-}
-.exchange-glow.glow-blue {
-  background: rgba(87, 215, 255, 0.28) !important;
-}
-.exchange-glow.glow-pink {
-  background: rgba(255, 93, 241, 0.26) !important;
-}
-.exchange-card-screen {
-  background: rgba(8, 6, 22, 0.92) !important;
-  border-color: rgba(255, 255, 255, 0.1) !important;
 }
 
 .notice-bar.notice-private,
@@ -1494,41 +1284,6 @@ textarea::placeholder {
 @media (max-width: 400px) {
   .header-balance-pill {
     display: none;
-  }
-}
-
-/* 10s exchange intro: allow vertical scroll so copy/card/ticker never clip */
-@media (max-width: 700px) {
-  .entry-experience.exchange-intro {
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-  .exchange-center {
-    justify-content: flex-start;
-    padding-top: 92px;
-    padding-bottom: 70px;
-  }
-  .exchange-topbar {
-    gap: 10px;
-  }
-}
-@media (max-width: 560px) {
-  .exchange-connected {
-    display: none;
-  }
-  .exchange-showcase {
-    padding: 24px 16px;
-  }
-  .exchange-copy p {
-    margin-bottom: 18px;
-  }
-  .exchange-ticker {
-    gap: 8px;
-  }
-}
-@media (max-width: 380px) {
-  .exchange-copy h1 {
-    font-size: 30px;
   }
 }
 
@@ -2478,94 +2233,16 @@ textarea::placeholder {
 }
 
 /* ========================================================================= */
-/* PERFORMANCE LAYER — mobile CPU / battery / thermal                        */
-/* Keeps the visual design (colors, gradients, glows, layout) identical and */
-/* removes only continuous repaint/GPU work: shadow-pulse loops, logo        */
-/* shimmer repaints, huge backdrop blurs over an animated starfield, and    */
-/* every decorative loop while nothing can see them (hidden tab/offline).    */
+/* PERFORMANCE LAYER — static by design                                       */
+/* The theme is fully static: no loops, no shimmer, no blurred animated      */
+/* layers. What remains here are structural performance rules.               */
 /* ========================================================================= */
 
-/* Breathing text/box shadows repaint the whole element every frame.        */
-/* Freeze them at the calm middle value — the glow stays, the loop stops.   */
-.hero-copy h1 em {
-  animation: none;
-  text-shadow: 0 0 26px rgba(139, 108, 255, 0.75);
-}
-.cta-card {
-  animation: none;
-  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55), 0 0 75px rgba(139, 108, 255, 0.26);
-}
-
-/* Logo gradient: still a gradient everywhere. The shimmer loop repaints    */
-/* clipped text every frame, so it only runs on hover-capable desktops and  */
-/* only while the brand is hovered/focused.                                 */
-.brand-copy b,
-.brand-copy em {
-  animation: none;
-}
-@media (hover: hover) and (prefers-reduced-motion: no-preference) {
-  .brand:hover .brand-copy b,
-  .brand:hover .brand-copy em,
-  .brand:focus-within .brand-copy b,
-  .brand:focus-within .brand-copy em {
-    animation: brandShimmer 6s linear infinite;
-  }
-}
-
-/* The nebulae are feathered radial gradients already; a 70px blur on top   */
-/* forces full-size GPU re-rasters whenever anything near them repaints.    */
-.nebula {
-  filter: none;
-}
-
-/* Backdrop blur sampling the animated starfield = per-frame repaint.       */
-/* Tokens sit on 86% opaque white; removing the blur is visually equivalent. */
+/* Hero tokens sit on ~86% opaque paint; skipping the backdrop blur removes
+   a per-frame GPU cost whenever anything under them repaints. */
 .floating-token {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
-}
-
-/* Motion governor (src/perf.ts): while the tab is hidden or the browser is  */
-/* offline, literally nothing may animate.                                    */
-html.motion-paused *,
-html.motion-paused *::before,
-html.motion-paused *::after {
-  animation-play-state: paused !important;
-}
-
-/* Low-power mobile (coarse pointer + small heap / few cores / data saver /  */
-/* running on battery): no endless decorative loops. Resting appearance is    */
-/* unchanged — gradients, glows and layout all stay; only the motion stops.   */
-@media (pointer: coarse) {
-  html.motion-lite .stars-a,
-  html.motion-lite .stars-b,
-  html.motion-lite .nebula-a,
-  html.motion-lite .nebula-b,
-  html.motion-lite .portfolio-card,
-  html.motion-lite .floating-token,
-  html.motion-lite .hero-profit-card,
-  html.motion-lite .product-card::before,
-  html.motion-lite .entry-aurora,
-  html.motion-lite .entry-stars i,
-  html.motion-lite .wallet-scene,
-  html.motion-lite .wealth-rays,
-  html.motion-lite .orbit,
-  html.motion-lite .character,
-  html.motion-lite .exchange-card,
-  html.motion-lite .glow-blue,
-  html.motion-lite .glow-pink,
-  html.motion-lite .cloud,
-  html.motion-lite .coin-btc,
-  html.motion-lite .coin-eth,
-  html.motion-lite .exchange-chip,
-  html.motion-lite .exchange-ticker span,
-  html.motion-lite .exchange-connected i,
-  html.motion-lite .screen-pulse {
-    animation: none !important;
-  }
-  html.motion-lite .stars {
-    will-change: auto;
-  }
 }
 
 /* Suspense placeholder for lazily loaded routes — spinner matches the      */
