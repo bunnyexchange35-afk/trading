@@ -100,65 +100,89 @@ npm run build
 npm start
 ```
 
-## Deploy Frontend to Cloudflare Workers
+## Deploy to Cloudflare Workers
 
-The `trading-worker/` directory contains a Cloudflare Worker that serves the
-built frontend and proxies `/api/*` to the Express backend. Wrangler is a root
-`devDependency`, so a single command from the repository root builds the frontend
-into `dist/` and deploys the Worker (its `assets.directory` points at `../dist`):
+The Worker in `trading-worker/src/index.ts` **is the backend**: it serves the
+built SPA, the live market endpoints, and every `/api/*` route (registration,
+sign-in, wallet, deposits, orders, staking, admin/super-admin commands). One
+deploy ships all of it.
+
+- **Live Worker**: `trading` → <https://trading.rufflocrm.workers.dev>
+- **Canonical config**: `wrangler.jsonc` (repo root)
+- **Mirror config**: `trading-worker/wrangler.jsonc` (same Worker, paths
+  relative to that directory — keep the two in sync)
 
 ```bash
-npm run deploy
+npm install
+npm run deploy          # npm run build && wrangler deploy -c wrangler.jsonc
+npm run verify:deployed # confirms the live URL is serving the API backend
 ```
 
-Deploys the Worker from `trading-worker/wrangler.jsonc`. Equivalent manual steps:
+Manual equivalent:
 
 ```bash
-npm run build                       # build frontend into dist/
-npx wrangler deploy -c trading-worker/wrangler.jsonc
+npm run build                                  # type-check + build SPA into dist/
+npx wrangler deploy -c wrangler.jsonc          # deploy Worker script + assets
 ```
+
+> **Deploy the *script*, not just the assets.** If a deploy uploads only `dist/`
+> (no `main` entry point), the Worker serves the SPA but has no API: `GET
+> /api/health` returns `index.html` and `POST /api/auth/register` returns
+> **405 Method Not Allowed** (static assets only allow GET/HEAD). The root
+> `wrangler.jsonc` exists so Cloudflare's default deploy command
+> (`npx wrangler deploy`) picks up the full Worker. Run
+> `npm run verify:deployed` after any deploy to confirm.
 
 ### Automatic deploy on push to `main` (Cloudflare Workers Builds)
 
-Cloudflare's **Workers Builds** git integration automatically builds and deploys
-on every push to your production branch — no workflow file or GitHub Actions
-needed. Set it up in the Cloudflare dashboard:
+Cloudflare's **Workers Builds** git integration builds and deploys on every push
+to the production branch — no workflow file needed. Settings live in the
+dashboard under the `trading` Worker:
 
-1. Go to **Workers & Pages**, then either:
-   - **Create application -> Get started -> Import a repository**, selecting this
-     repo and the `main` branch, or
-   - For an existing Worker, open it -> **Settings -> Builds -> Connect**.
-2. Make sure the Worker name in the dashboard matches `mudrex-earn` (the name
-   in `trading-worker/wrangler.jsonc`), or the build will fail. Note: the worker
-   was previously named `trading` — the first deploy under `mudrex-earn` creates
-   a new Worker (`mudrex-earn.<subdomain>.workers.dev`); delete or redirect the
-   old one if you had it deployed.
-3. In **Settings -> Build**, set:
+1. **Workers & Pages → `trading` → Settings → Builds → Connect** (this repo).
+2. Keep the **Worker name in the dashboard exactly `trading`** — it must match
+   `name` in `wrangler.jsonc`; a mismatch deploys to the wrong Worker and leaves
+   `trading.rufflocrm.workers.dev` on an old build.
+3. In **Settings → Build**, set:
    - **Build command**: `npm run build`
-   - **Deploy command**: `npx wrangler deploy -c trading-worker/wrangler.jsonc`
+   - **Deploy command**: `npx wrangler deploy -c wrangler.jsonc`
+   - **Non-production branch deploy command**: leave the default
+     (`npx wrangler versions upload`) — it **does not** update production
    - **Root directory**: leave blank (repo root)
    - **Production branch**: `main`
-4. Configure the backend origin and any runtime secrets under
-   **Settings -> Variables & Secrets** (see `BACKEND_ORIGIN` below). Build-time
-   secrets (your own API token) go under **Settings -> Build -> Build variables
-   and secrets**. By default Cloudflare auto-generates the build API token.
+4. After a build finishes, open the deployment and confirm it is the
+   **production** deployment for the `trading` Worker, then run
+   `npm run verify:deployed`.
+
+To re-deploy the current `main` without a new commit: **Workers & Pages →
+`trading` → Deployments → (latest build) → Retry deployment**, or run
+`npm run deploy` locally with `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID`
+set. A ready-made manual workflow is committed at
+`scripts/github-workflows/deploy-worker.yml`. Copy it to
+`.github/workflows/deploy-worker.yml` (GitHub UI → **Add file** → **Create new
+file**), add the repository secrets `CLOUDFLARE_API_TOKEN` and
+`CLOUDFLARE_ACCOUNT_ID` once, then run **Actions → Deploy Worker → Run
+workflow** — it deploys and verifies in a single run.
 
 Notes:
 
-- The committed `trading-worker/wrangler.jsonc` is intentionally minimal (name,
-  `assets` SPA binding, observability). It has no backend wiring by default —
-  everything backend-related is optional and can be added in the dashboard
-  (**Settings -> Bindings / Variables & Secrets**) or appended to the config:
-  a **Service Binding** (`services` entry bound to `BACKEND`), the
-  `BACKEND_ORIGIN` var, or KV `config:backend-url`. Without any of these, the
-  worker still serves the SPA and the native `/api/markets`,
-  `/api/market/klines` and `/api/health` endpoints; other `/api/*` calls return
-  `503` with a setup hint.
-- API calls are same-origin (`/api/*`), so no CORS changes are needed when the
-  worker proxies to the backend.
+- **Persistence**: without a `STORE` KV namespace the Worker keeps users in
+  memory and **accounts reset on every deploy**. To persist:
+  ```bash
+  npx wrangler kv namespace create USERS
+  # paste the printed id into wrangler.jsonc under kv_namespaces (binding "STORE")
+  ```
+- **Codes**: `ADMIN_CODES` / `SUPER_ADMIN_CODES` live in
+  **Settings → Variables & Secrets** (or `wrangler secret put`); the defaults in
+  the config are public. A new deployment replaces the Worker's runtime
+  variables with what the config declares, so keep them in the dashboard/config.
+- **Optional passthrough**: a `BACKEND` service binding or `BACKEND_ORIGIN` var
+  is only needed for paths the Worker does not implement (currently none under
+  `/api/*`; unknown API paths return `404`).
+- API calls are same-origin (`/api/*`), so no CORS changes are needed.
 - `not_found_handling: "single-page-application"` makes every non-asset path
-  (e.g. `/login`, `/dashboard`) serve `dist/index.html`, so client-side routing
-  works on hard refresh and direct links.
+  (e.g. `/login`, `/auth/register`) serve `dist/index.html`, so client-side
+  routing works on hard refresh and direct links.
 
 ## App Routes
 

@@ -123,35 +123,44 @@ describe('Mudrexx Earn Backend Test Suite', () => {
     });
   });
 
-  describe('Invitation-Only Registration & Sign-In Enforcement', () => {
+  describe('Registration & Sign-In Enforcement', () => {
     const testEmail = `testuser_${Date.now()}@mudrexx.com`;
     const otherEmail = `otheruser_${Date.now()}@mudrexx.com`;
     let token;
     let otherToken;
 
-    test('registration without an invitation code is rejected', async () => {
+    test('registration without a code is accepted (registration is open)', async () => {
       const res = await fetch(`${BASE_URL}/api/auth/register`, {
         method: 'POST',
         headers: JSON_HEADERS,
         body: JSON.stringify({ name: 'No Code', email: `nocode_${Date.now()}@mudrexx.com` }),
       });
-      assert.equal(res.status, 403);
+      assert.equal(res.status, 200);
       const data = await res.json();
-      assert.match(data.error, /invitation only/i);
+      assert.equal(data.success, true);
+      assert.equal(data.user.wallet.realBalance, 0);
+      assert.equal(data.user.wallet.demoBalance, 10000);
+      assert.match(data.token, /^mx_/);
+      assert.ok(!data.user.invitedBy, 'no attribution without a code');
+      assert.ok(!data.user.invitedByType, 'no attribution type without a code');
     });
 
-    test('registration with an unknown code is rejected', async () => {
+    test('an unknown code still registers, but grants no attribution', async () => {
       const res = await fetch(`${BASE_URL}/api/auth/register`, {
         method: 'POST',
         headers: JSON_HEADERS,
         body: JSON.stringify({ name: 'Bad Code', email: `bad_${Date.now()}@mudrexx.com`, inviteCode: 'NOT-A-CODE' }),
       });
-      assert.equal(res.status, 403);
+      assert.equal(res.status, 200);
+      const data = await res.json();
+      assert.ok(!data.user.invitedBy, 'unknown code grants no attribution');
+      assert.ok(!data.user.invitedByType, 'unknown code grants no attribution type');
     });
 
-    test('user referral codes do NOT grant registration (institute codes only)', async () => {
+    test('user referral codes do NOT grant attribution (institute codes only)', async () => {
       const first = await registerAccount(testEmail, 'Test Trader', 'ADMIN777');
       assert.equal(first.status, 200);
+      assert.equal(first.data.user.invitedByType, 'admin');
       const referralCode = first.data.user.inviteCode; // MUD-XXXX user code
       assert.match(referralCode, /^MUD-/);
       const attempt = await fetch(`${BASE_URL}/api/auth/register`, {
@@ -159,7 +168,9 @@ describe('Mudrexx Earn Backend Test Suite', () => {
         headers: JSON_HEADERS,
         body: JSON.stringify({ name: 'Referral Try', email: `ref_${Date.now()}@mudrexx.com`, inviteCode: referralCode }),
       });
-      assert.equal(attempt.status, 403);
+      assert.equal(attempt.status, 200);
+      const data = await attempt.json();
+      assert.ok(!data.user.invitedBy, 'referral codes are not institute attribution');
     });
 
     test('valid institute code registers with ₹0 real, 10,000 credits and a bearer token', async () => {

@@ -18,7 +18,7 @@ A India-first crypto earn/trading desk: live Coinbase-powered prices across 32 a
 
 ```
                         ┌─────────────────────────────────────────┐
-   Browser ───────────▶ │  Cloudflare Worker  (mudrex-earn)       │
+   Browser ───────────▶ │  Cloudflare Worker  (trading)           │
                         │                                         │
                         │  • serves dist/ SPA (all page routes)   │
                         │  • live markets: /api/markets, klines   │
@@ -45,9 +45,9 @@ Repo layout:
 | `dist/` | Built frontend output (`npm run build`) — served by worker or Express |
 | `server.mjs` | The Express **backend code** — all wallet/auth/order APIs + the order engine (see [`ADMIN-CONTROL.md`](ADMIN-CONTROL.md) for the admin command summary) |
 | `server/data/users.json` | Persistent user store (gitignored — mount a volume in prod) |
-| `trading-worker/` | Cloudflare Worker (SPA host + native market API + proxy) |
+| `trading-worker/` | Cloudflare Worker — SPA host, native market API **and the full auth/wallet/order backend** |
 | `Dockerfile`, `docker-compose.yml`, `.dockerignore` | One-command backend deploy (builds frontend, serves SPA + API) |
-| `trading-worker/wrangler.jsonc` | Worker config: `mudrex-earn`, assets `../dist`, SPA fallback |
+| `wrangler.jsonc` (root) + `trading-worker/wrangler.jsonc` | Worker config: name `trading`, entry `trading-worker/src/index.ts`, assets `dist/`, SPA fallback (keep both in sync) |
 | `test/api.test.mjs` | 20 backend tests (`npm test`) |
 
 ---
@@ -199,21 +199,31 @@ The worker IS the backend — one deploy, nothing else to host:
 ```bash
 npx wrangler login            # first time only
 npm install
-npm run deploy                # = npm run build && wrangler deploy -c trading-worker/wrangler.jsonc
+npm run deploy                # = npm run build && wrangler deploy -c wrangler.jsonc
 ```
 
-Worker lands at `https://mudrex-earn.<your-subdomain>.workers.dev` — SPA, live markets, invitation-only registration, sign-in, wallet, order board and every admin / super admin control command all live there. Verify: `curl https://mudrex-earn.<subdomain>.workers.dev/api/health` → `{"ok":true,...}`.
+Worker lands at `https://trading.rufflocrm.workers.dev` — SPA, live markets, registration, sign-in, wallet, order board and every admin / super admin control command all live there.
+
+Verify the deployment (it must include the Worker script, not just the built SPA):
+
+```bash
+npm run verify:deployed                      # defaults to https://trading.rufflocrm.workers.dev
+node scripts/verify-deployed-worker.mjs https://<worker>.<subdomain>.workers.dev
+curl https://trading.rufflocrm.workers.dev/api/health   # -> {"ok":true,...}
+```
+
+**If `POST /api/auth/register` returns `405 Method Not Allowed`** (or `/api/health` returns HTML instead of JSON), the live deployment contains only the built SPA — the Worker script was never uploaded, so `/api/*` falls through to the static-asset layer. Fix it by deploying with a config that sets `main` (`npm run deploy`), or in Workers Builds set the deploy command to `npx wrangler deploy -c wrangler.jsonc`, and make sure the build is a **production** build (non-production branches run `npx wrangler versions upload`, which creates a preview version and leaves production untouched).
 
 1. **Codes**: set `ADMIN_CODES` and `SUPER_ADMIN_CODES` in the dashboard (**Settings → Variables & Secrets**) or in `trading-worker/wrangler.jsonc` — defaults are public in the repo.
 2. **Persistence (optional)**: without it the worker runs on an in-memory store (accounts reset on each deploy). For persistence:
    ```bash
    npx wrangler kv namespace create USERS
-   # paste the printed id into trading-worker/wrangler.jsonc under
+   # paste the printed id into wrangler.jsonc under
    # kv_namespaces -> binding "STORE", then re-deploy
    ```
 3. **Admin commands**: drive everything from the backend at the worker URL — see [`ADMIN-CONTROL.md`](ADMIN-CONTROL.md) and [`api.json`](api.json).
 4. **Optional passthrough**: `BACKEND` (service binding) or `BACKEND_ORIGIN` still work for paths the worker does not implement.
-5. **Auto-deploy on push** (optional): Workers & Pages → `mudrex-earn` → Settings → Builds → Connect repo, build command `npm run build`, deploy command `npx wrangler deploy -c trading-worker/wrangler.jsonc`, production branch `main`.
+5. **Auto-deploy on push** (optional): Workers & Pages → `trading` → Settings → Builds → Connect repo, build command `npm run build`, deploy command `npx wrangler deploy -c wrangler.jsonc`, production branch `main`. The dashboard Worker name must equal the `name` in `wrangler.jsonc` (`trading`). A manual, verified alternative ships in `scripts/github-workflows/deploy-worker.yml` — copy it to `.github/workflows/deploy-worker.yml` to enable it (Actions → Deploy Worker → Run workflow; needs `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` secrets).
 
 ### Local development
 
