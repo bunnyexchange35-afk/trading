@@ -416,7 +416,7 @@ app.get('/api', (_req, res) => {
         transactions: 'GET /api/wallet/transactions?email=...',
         frozen: 'GET /api/wallet/frozen?email=...',
         releaseFrozen: 'POST /api/wallet/frozen/release',
-        approveDeposit: 'POST /api/wallet/deposit/approve',
+        approveDeposit: 'POST /api/wallet/deposit/approve {email,id,code} — admin code required',
         convertDemo: 'POST /api/wallet/convert-demo',
         claimDemo: 'POST /api/wallet/claim-demo',
         linkDemo: 'POST /api/wallet/link-demo',
@@ -673,11 +673,77 @@ function walletStateSnapshot(user) {
 
 // ============================================================================
 // 2.8 SIGN-IN ENFORCEMENT — protected API surface
+// ---------------------------------------------------------------------------
+// Deposit approval is a BACK-OFFICE action. Like /api/admin/* it authenticates
+// with an admin code (ADMIN_CODES / SUPER_ADMIN_CODES), not a user session, so
+// this route is registered ABOVE the requireAuth mount below.
+//
+// Security history: this route previously sat behind requireAuth with NO role
+// check, so a signed-in account could approve its OWN pending deposit and
+// credit itself — realBalance plus depositCreditedTotal, which is a credit-score
+// input (verified live before the fix: ₹100 → ₹100,100, score 420 → 480).
+// It now requires a valid admin code and never creates accounts.
+// ---------------------------------------------------------------------------
+app.post('/api/wallet/deposit/approve', (req, res) => {
+  const { email, id } = req.body || {};
+  const adminCode = normalizeInviteCode(req.body?.code || req.query?.code);
+  if (!email || !id) return res.status(400).json({ error: 'Email and Deposit Item ID are required' });
+
+  if (!adminCodes.includes(adminCode)) {
+    return res.status(403).json({
+      error: 'Deposit approval requires a valid admin code. Pending deposits are verified by staff, not by the account holder.',
+    });
+  }
+
+  const user = userDb.get(String(email).trim().toLowerCase());
+  if (!user) return res.status(404).json({ error: 'No account exists for this email' });
+
+  const itemIndex = user.wallet.frozenItems.findIndex((i) => i.id === id);
+  if (itemIndex === -1) return res.status(404).json({ error: 'Deposit item not found' });
+
+  const [item] = user.wallet.frozenItems.splice(itemIndex, 1);
+  const isINR = item.currency === 'INR';
+
+  // Track lifetime credited deposits for the wallet state view.
+  if (isINR) user.wallet.depositCreditedTotal = Number(user.wallet.depositCreditedTotal || 0) + item.amount;
+  else user.wallet.depositCreditedTotalUsdt = Number(user.wallet.depositCreditedTotalUsdt || 0) + item.amount;
+
+  if (isINR) {
+    user.wallet.frozenBalance = Math.max(0, user.wallet.frozenBalance - item.amount);
+    user.wallet.realBalance += item.amount;
+  } else {
+    user.wallet.frozenUsdtBalance = Math.max(0, user.wallet.frozenUsdtBalance - item.amount);
+    user.wallet.realUsdtBalance += item.amount;
+  }
+
+  user.wallet.transactions.unshift({
+    id: `tx-app-${Date.now()}`,
+    title: 'Deposit Verified & Unlocked',
+    description: `${item.currency} ${item.amount} moved from Frozen to Available balance`,
+    time: 'Just now',
+    amount: item.amount,
+    currency: item.currency,
+    type: 'deposit',
+    tone: 'up',
+    status: 'completed',
+  });
+
+  persist();
+  res.json({
+    success: true,
+    message: 'Deposit verified and credited to Available Balance',
+    approvedAmount: item.amount,
+    newRealBalance: user.wallet.realBalance,
+    newFrozenBalance: user.wallet.frozenBalance,
+  });
+});
+
 // ============================================================================
 // Everything below this mount requires a valid bearer token from
 // POST /api/auth/login (or the token returned by registration):
 //   Authorization: Bearer <token>
-// Admin control endpoints (/api/admin/*) authenticate with admin codes.
+// Admin control endpoints (/api/admin/*) authenticate with admin codes —
+// so does deposit approval (registered above the mount for that reason).
 app.use(['/api/wallet', '/api/orders', '/api/deposit', '/api/withdraw', '/api/staking', '/api/user', '/api/account'], requireAuth);
 
 // ============================================================================
@@ -972,13 +1038,25 @@ app.post('/api/admin/wallet/adjust', (req, res) => {
   res.json({ success: true, field, delta: Number(delta), wallet: walletStateSnapshot(user) });
 });
 
-// Login
+// Login — EXISTING accounts only. Registration is by invitation
+// (/api/auth/register validates an institute-assigned code); login must never
+// create an account, otherwise anyone could mint accounts — and their demo
+// credits — without ever holding a code, which defeated the invitation gate.
+//
+// Residual (documented, not silently accepted): the backend still has no
+// credential check, so knowing a registered email is enough to open that
+// account's session. Adding passwords/passkeys is a product decision.
 app.post('/api/auth/login', (req, res) => {
-  const { email, name } = req.body || {};
+  const { email } = req.body || {};
   if (!email) return res.status(400).json({ error: 'Email is required' });
 
-  const normalized = email.trim().toLowerCase();
-  const user = getOrCreateUser(normalized, name);
+  const normalized = String(email).trim().toLowerCase();
+  const user = userDb.get(normalized);
+  if (!user) {
+    return res.status(404).json({
+      error: 'No account exists for this email. Registration is by invitation only — sign up with the code assigned to you.',
+    });
+  }
 
   res.json({
     success: true,
@@ -1135,52 +1213,6 @@ app.post('/api/wallet/frozen/release', (req, res) => {
     success: true,
     message: `${item.currency === 'INR' ? '₹' : '₮'}${item.amount.toLocaleString()} released to Available Balance`,
     releasedAmount: item.amount,
-    newRealBalance: user.wallet.realBalance,
-    newFrozenBalance: user.wallet.frozenBalance,
-  });
-});
-
-// Approve pending deposit (sandbox verification)
-app.post('/api/wallet/deposit/approve', (req, res) => {
-  const { email, id } = req.body || {};
-  if (!email || !id) return res.status(400).json({ error: 'Email and Deposit Item ID are required' });
-
-  const user = getOrCreateUser(email);
-  const itemIndex = user.wallet.frozenItems.findIndex((i) => i.id === id);
-  if (itemIndex === -1) return res.status(404).json({ error: 'Deposit item not found' });
-
-  const [item] = user.wallet.frozenItems.splice(itemIndex, 1);
-  const isINR = item.currency === 'INR';
-
-  // Track lifetime credited deposits for the wallet state view.
-  if (isINR) user.wallet.depositCreditedTotal = Number(user.wallet.depositCreditedTotal || 0) + item.amount;
-  else user.wallet.depositCreditedTotalUsdt = Number(user.wallet.depositCreditedTotalUsdt || 0) + item.amount;
-
-  if (isINR) {
-    user.wallet.frozenBalance = Math.max(0, user.wallet.frozenBalance - item.amount);
-    user.wallet.realBalance += item.amount;
-  } else {
-    user.wallet.frozenUsdtBalance = Math.max(0, user.wallet.frozenUsdtBalance - item.amount);
-    user.wallet.realUsdtBalance += item.amount;
-  }
-
-  user.wallet.transactions.unshift({
-    id: `tx-app-${Date.now()}`,
-    title: 'Deposit Verified & Unlocked',
-    description: `${item.currency} ${item.amount} moved from Frozen to Available balance`,
-    time: 'Just now',
-    amount: item.amount,
-    currency: item.currency,
-    type: 'deposit',
-    tone: 'up',
-    status: 'completed',
-  });
-
-  persist();
-  res.json({
-    success: true,
-    message: 'Deposit verified and credited to Available Balance',
-    approvedAmount: item.amount,
     newRealBalance: user.wallet.realBalance,
     newFrozenBalance: user.wallet.frozenBalance,
   });
