@@ -298,7 +298,7 @@ describe('Mudrexx Earn Backend Test Suite', () => {
       assert.ok(data.depositId);
     });
 
-    test('POST /api/wallet/deposit/approve approves pending deposit and moves funds to available', async () => {
+    test('POST /api/wallet/deposit/approve with an admin code approves pending deposit and moves funds to available', async () => {
       const frozenRes = await fetch(`${BASE_URL}/api/wallet/frozen?email=${encodeURIComponent(testEmail)}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -309,7 +309,7 @@ describe('Mudrexx Earn Backend Test Suite', () => {
       const res = await fetch(`${BASE_URL}/api/wallet/deposit/approve`, {
         method: 'POST',
         headers: authHeaders(token),
-        body: JSON.stringify({ email: testEmail, id: depositItem.id }),
+        body: JSON.stringify({ email: testEmail, id: depositItem.id, code: 'ADMIN777' }),
       });
       assert.equal(res.status, 200);
       const data = await res.json();
@@ -742,4 +742,87 @@ describe('Mudrexx Earn Backend Test Suite', () => {
       }
     });
   });
+  describe('Security regressions: login cannot mint accounts, deposits cannot be self-approved', () => {
+    test('login refuses unknown emails and creates no account (invitation gate holds at sign-in)', async () => {
+      const ghost = `ghost-${Date.now()}@mudrexx.test`;
+      const attempt = async () => {
+        const res = await fetch(`${BASE_URL}/api/auth/login`, {
+          method: 'POST',
+          headers: JSON_HEADERS,
+          body: JSON.stringify({ email: ghost }),
+        });
+        return { status: res.status, data: await res.json() };
+      };
+      const first = await attempt();
+      assert.equal(first.status, 404);
+      assert.equal(first.data.token, undefined);
+      const second = await attempt(); // a second try must 404 too — no account was created
+      assert.equal(second.status, 404);
+    });
+
+    test('deposit approval is refused for the account holder (self-approval closed)', async () => {
+      const email = `selfapprove-${Date.now()}@mudrexx.test`;
+      const reg = await registerAccount(email, 'Self Approval Probe');
+      assert.equal(reg.status, 200);
+
+      const dep = await fetch(`${BASE_URL}/api/deposit/submit`, {
+        method: 'POST',
+        headers: authHeaders(reg.data.token),
+        body: JSON.stringify({ email, amount: 100000, rail: 'inr', method: 'UPI Direct', reference: 'SELF' }),
+      });
+      const { depositId } = await dep.json();
+      assert.ok(depositId);
+
+      // The account holder's own, valid session — but no admin code.
+      const res = await fetch(`${BASE_URL}/api/wallet/deposit/approve`, {
+        method: 'POST',
+        headers: authHeaders(reg.data.token),
+        body: JSON.stringify({ email, id: depositId }),
+      });
+      assert.equal(res.status, 403);
+
+      const summaryRes = await fetch(`${BASE_URL}/api/wallet/summary?email=${encodeURIComponent(email)}`, {
+        headers: authHeaders(reg.data.token),
+      });
+      const summary = await summaryRes.json();
+      assert.equal(summary.summary.realBalance, 0); // nothing was credited
+      assert.equal(summary.summary.depositCredited, 0);
+    });
+
+    test('deposit approval with a valid admin code credits the deposit (staff path)', async () => {
+      const email = `staffapprove-${Date.now()}@mudrexx.test`;
+      const reg = await registerAccount(email, 'Staff Approval Probe');
+      assert.equal(reg.status, 200);
+
+      const dep = await fetch(`${BASE_URL}/api/deposit/submit`, {
+        method: 'POST',
+        headers: authHeaders(reg.data.token),
+        body: JSON.stringify({ email, amount: 750, rail: 'inr', method: 'Bank Transfer', reference: 'STAFF' }),
+      });
+      const { depositId } = await dep.json();
+
+      // No bearer token at all — approval authenticates with the admin code,
+      // exactly like every /api/admin/* route.
+      const res = await fetch(`${BASE_URL}/api/wallet/deposit/approve`, {
+        method: 'POST',
+        headers: JSON_HEADERS,
+        body: JSON.stringify({ email, id: depositId, code: 'ADMIN777' }),
+      });
+      assert.equal(res.status, 200);
+      const out = await res.json();
+      assert.equal(out.success, true);
+      assert.equal(out.approvedAmount, 750);
+      assert.equal(out.newRealBalance, 750); // account registered with ₹0
+    });
+
+    test('deposit approval never creates unknown accounts', async () => {
+      const res = await fetch(`${BASE_URL}/api/wallet/deposit/approve`, {
+        method: 'POST',
+        headers: JSON_HEADERS,
+        body: JSON.stringify({ email: `nobody-${Date.now()}@mudrexx.test`, id: 'tx-none', code: 'ADMIN777' }),
+      });
+      assert.equal(res.status, 404);
+    });
+  });
+
 });
