@@ -1,28 +1,28 @@
 {
-  "name": "mudrex-earn",
+  "name": "trading",
   "version": "1.0.0",
-  "description": "Trading desk API (training programme). Live Coinbase market graphs and real currency pairs. Registration is invitation-only with institute-assigned codes and every wallet/order action requires sign-in. Admin and super admin control every order outcome from the backend.",
+  "description": "Trading desk API (training programme). Live Coinbase market graphs and real currency pairs. Registration is open — an institute code is optional and only used for attribution — and every wallet/order action requires a bearer token. Admin and super admin control every order outcome from the backend.",
   "servers": {
-    "cloudflare_worker": "https://mudrex-earn.<your-subdomain>.workers.dev",
+    "cloudflare_worker": "https://trading.rufflocrm.workers.dev",
     "backend_origin": "https://<your-backend-origin> (only for the optional Node/server.mjs deployment — the worker contains the full backend)",
-    "note": "Recommended: the single Cloudflare worker runs everything — SPA, live Coinbase markets, invitation-only registration, token sign-in, wallet, order engine and all admin/super admin commands. All /api/* paths work at the worker URL directly. Storage: STORE KV when bound, in-memory fallback otherwise. The Express backend (server.mjs) speaks the identical contract for local dev / self-hosting."
+    "note": "Recommended: the single Cloudflare worker runs everything — SPA, live Coinbase markets, open registration (optional institute code), token sign-in, wallet, order engine and all admin/super admin commands. All /api/* paths work at the worker URL directly. Storage: STORE KV when bound, in-memory fallback otherwise. The Express backend (server.mjs) speaks the identical contract for local dev / self-hosting."
   },
   "environment": {
-    "ADMIN_CODES": "Institute invitation codes, comma separated. Users can ONLY register with one of these. Default: MUDREXX-ADMIN,ADMIN-2024,ADMIN777,MEDRIX888,ADMIN — override in production.",
+    "ADMIN_CODES": "Institute codes, comma separated. Registration does not require a code; when one is supplied it attributes the account to that admin (and grants admin commands). Default: MUDREXX-ADMIN,ADMIN-2024,ADMIN777,MEDRIX888,ADMIN — override in production.",
     "SUPER_ADMIN_CODES": "Super admin codes (order control + wallet state control). Default: MUDREXX-SUPER,SUPER-2024 — override in production.",
     "BACKEND_ORIGIN": "Worker variable pointing at the backend origin.",
     "DATA_DIR": "Optional. Overrides the user-store directory (server/data)."
   },
   "auth": {
-    "condition_1_registration_is_invitation_only": {
-      "rule": "The ONLY valid registration codes are the institute-assigned codes (ADMIN_CODES / SUPER_ADMIN_CODES). User referral codes are NOT accepted, codes are never issued by the app, and there is no place to obtain one. A participant receives their code from the institute.",
+    "condition_1_registration_is_open": {
+      "rule": "POST /api/auth/register creates the account directly — no code required. An institute code (ADMIN_CODES / SUPER_ADMIN_CODES) may still be supplied as inviteCode: it is optional, only used for attribution (invitedBy / invitedByType), and never blocks signup. User referral codes are not accepted for attribution.",
       "endpoint": "POST /api/auth/register",
       "body": {
         "name": "Rahul Sharma",
         "email": "rahul@example.com",
         "phone": "+91 98765 43210",
         "preferredCurrency": "INR",
-        "inviteCode": "<institute-assigned code>"
+        "inviteCode": "<optional institute code>"
       },
       "success_200": {
         "success": true,
@@ -38,10 +38,10 @@
         },
         "token": "mx_<random>"
       },
-      "rejected_403": {
-        "error": "Registration is by invitation only. Enter the code assigned to you."
+      "error_400": {
+        "error": "Email is required"
       },
-      "on_reject": "Missing code, unknown code, or another user's referral code -> 403, no account created."
+      "note": "Re-registering an existing email returns that account (and a fresh token) rather than creating a duplicate."
     },
     "condition_2_sign_in_required": {
       "rule": "Every wallet / order / deposit / withdrawal / staking / profile call must carry the bearer token. A token only ever touches its own account.",
@@ -99,7 +99,7 @@
       "register": {
         "method": "POST",
         "path": "/api/auth/register",
-        "see": "auth.condition_1_registration_is_invitation_only"
+        "see": "auth.condition_1_registration_is_open"
       },
       "login": {
         "method": "POST",
@@ -379,7 +379,7 @@
     }
   },
   "order_lifecycle": [
-    "1. Sign up with the institute-assigned invitation code -> account starts at ₹0.00 + 10,000 practice credits (register returns a bearer token).",
+    "1. Create an account (optional institute code for attribution) -> account starts at ₹0.00 + 10,000 practice credits (register returns a bearer token).",
     "2. Sign in (or use the register token); every wallet/order call sends Authorization: Bearer <token>.",
     "3. Order placed from the Instant Order page: escrow (INR/USDT or credits), entry price captured live, order appears on the live board with %, countdown and wallet state (deposit / credit / total / frozen).",
     "4. At expiry the order auto-settles against the real market move; an admin or super admin can force win / lose / cancel or change currency, time and % ANYTIME — the admin decision is final and instant.",

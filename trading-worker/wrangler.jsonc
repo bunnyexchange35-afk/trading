@@ -1,6 +1,13 @@
 {
+  // Worker-local config (used when deploying from `trading-worker/`).
+  // The repo-root `wrangler.jsonc` mirrors this file with root-relative paths
+  // and is what Workers Builds / `npm run deploy` pick up. Keep both in sync.
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "mudrex-earn",
+
+  // Must match the Worker in the Cloudflare dashboard — `trading` is the Worker
+  // that serves https://trading.rufflocrm.workers.dev. Renaming it here deploys
+  // to a *different* Worker, which leaves the live host serving the old build.
+  "name": "trading",
   "main": "src/index.ts",
   "compatibility_date": "2026-08-20",
 

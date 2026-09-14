@@ -11,8 +11,9 @@
     "preview": "vite preview --host 0.0.0.0",
     "typecheck": "tsc --noEmit",
     "test": "tsc --noEmit && node --test test/api.test.mjs",
-    "deploy": "npm run build && wrangler deploy -c trading-worker/wrangler.jsonc",
-    "worker:deploy": "npm --prefix trading-worker run deploy"
+    "deploy": "npm run build && wrangler deploy -c wrangler.jsonc",
+    "worker:deploy": "npm --prefix trading-worker run deploy",
+    "verify:deployed": "node scripts/verify-deployed-worker.mjs"
   },
   "engines": {
     "node": ">=20"

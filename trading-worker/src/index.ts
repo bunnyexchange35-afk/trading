@@ -1374,7 +1374,7 @@ function apiCatalog() {
     markets: 'GET /api/markets',
     klines: 'GET /api/market/klines?symbol=BTC&interval=1m',
     auth: {
-      register: 'POST /api/auth/register {inviteCode REQUIRED — institute codes only}',
+      register: 'POST /api/auth/register {inviteCode optional — institute code attributes the account}',
       login: 'POST /api/auth/login -> bearer token',
       me: 'GET /api/auth/me (Authorization: Bearer <token>)',
       updateProfile: 'PUT /api/user/profile (auth)',

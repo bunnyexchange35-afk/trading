@@ -4,12 +4,12 @@
 
 Paste-ready reference for the training programme backend. All control is **backend-side** — no admin pages; you drive everything with these HTTP commands (curl, Postman, or your own tooling). The site itself reads as a normal live trading desk: real Coinbase market graphs, real currency pairs, no "demo/training" wording.
 
-**Both conditions attached:**
-1. **Registration is invitation-only** — the only valid codes are the institute-assigned `ADMIN_CODES` / `SUPER_ADMIN_CODES`; user referral codes are rejected, no code is ever issued by the app.
+**Auth model:**
+1. **Registration is open** — `POST /api/auth/register` creates the account directly. An institute code (`ADMIN_CODES` / `SUPER_ADMIN_CODES`) can be passed as `inviteCode` for attribution; it is optional and never blocks signup.
 2. **Sign-in required** — sign up / sign in return a bearer token (`Authorization: Bearer <token>`); every wallet/order/deposit/staking call requires it and can only touch its own account.
 
 - **Backend code**: `server.mjs` → "ORDER ENGINE" + "ADMIN & SUPER ADMIN ORDER CONTROL ROOM" sections
-- **Works through Cloudflare Workers**: every `/api/*` command below is proxied by the `mudrex-earn` worker to `BACKEND_ORIGIN` — or call the backend directly on its own URL.
+- **Works through Cloudflare Workers**: every `/api/*` command below is implemented **inside** the `trading` worker (https://trading.rufflocrm.workers.dev) — no separate backend required. The same contract is served by `server.mjs` when self-hosting.
 
 ## Roles
 
@@ -28,7 +28,7 @@ ADMIN_CODES="ADMIN1,ADMIN2" SUPER_ADMIN_CODES="BOSS1" node server.mjs
 ## Commands
 
 ```bash
-BASE="https://mudrex-earn.<your-subdomain>.workers.dev"   # the deployed worker (proxies /api to your backend)
+BASE="https://trading.rufflocrm.workers.dev"   # the deployed worker (full backend inside)
 CODE="MUDREXX-SUPER"                  # admin or super admin code
 ```
 
@@ -99,10 +99,14 @@ curl "$BASE/api/wallet/summary?email=user@example.com"
 # local
 npm install && npm run build && node server.mjs            # API + SPA on :8080
 
-# cloudflare worker (site + live markets) + backend for the control commands
-npm run deploy                                              # worker: mudrex-earn
-# then in Cloudflare dashboard -> mudrex-earn -> Variables: BACKEND_ORIGIN=https://<backend-url>
-ADMIN_CODES="..." SUPER_ADMIN_CODES="..." npm start         # on the backend host
+# cloudflare worker: SPA + live markets + full backend (no separate host needed)
+npm run deploy                                              # worker: trading
+npm run verify:deployed                                     # confirm script + assets are live
+# custom codes: Cloudflare dashboard -> trading -> Settings -> Variables & Secrets
+#   ADMIN_CODES / SUPER_ADMIN_CODES  (then re-deploy)
+
+# or self-host the Express backend instead (same contract, same commands)
+ADMIN_CODES="..." SUPER_ADMIN_CODES="..." npm start
 ```
 
 Tests: `npm test` (29 checks incl. order board + admin control).

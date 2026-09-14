@@ -1,0 +1,84 @@
+name: Deploy Worker
+
+# ---------------------------------------------------------------------------
+# ENABLE THIS FIRST: copy this file to `.github/workflows/deploy-worker.yml`
+# (GitHub UI -> Add file -> Create new file, path `.github/workflows/...`) or
+# run once with a token that has the `workflow` scope:
+#     mkdir -p .github/workflows && cp scripts/github-workflows/deploy-worker.yml .github/workflows/
+# Until it lives under `.github/workflows/`, GitHub will not run it.
+# ---------------------------------------------------------------------------
+#
+# Manual, deterministic deploy of the full Worker (SPA + API backend) to the
+# `trading` Worker that serves https://trading.rufflocrm.workers.dev.
+#
+# This is an alternative to Cloudflare Workers Builds: it always deploys the
+# Worker script (`trading-worker/src/index.ts`) together with the built SPA, so
+# the "assets-only deployment" state cannot happen (that state makes
+# POST /api/auth/register answer 405).
+#
+# One-time setup — add these repository secrets (Settings -> Secrets and
+# variables -> Actions):
+#   CLOUDFLARE_API_TOKEN   token with "Edit Cloudflare Workers" permission
+#   CLOUDFLARE_ACCOUNT_ID  the account id that owns the `trading` Worker
+#
+# Then run it from the Actions tab ("Run workflow"), or:
+#   gh workflow run deploy-worker.yml
+
+on:
+  workflow_dispatch:
+    inputs:
+      verify_url:
+        description: 'Worker URL to verify after deploying'
+        required: true
+        default: 'https://trading.rufflocrm.workers.dev'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-worker
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Check credentials are configured
+        run: |
+          if [ -z "${CLOUDFLARE_API_TOKEN}" ] || [ -z "${CLOUDFLARE_ACCOUNT_ID}" ]; then
+            echo "::error::Add the repository secrets CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID (Settings -> Secrets and variables -> Actions)."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Deploy Worker (script + assets)
+        run: npx wrangler deploy -c wrangler.jsonc
+
+      - name: Verify the deployment is live
+        run: |
+          url="${{ github.event.inputs.verify_url }}"
+          for attempt in 1 2 3 4 5; do
+            echo "--- verification attempt ${attempt} ---"
+            if node scripts/verify-deployed-worker.mjs "$url"; then
+              exit 0
+            fi
+            echo "Retrying in 15s (edge propagation)..."
+            sleep 15
+          done
+          echo "::error::The deployment did not become healthy at ${url}. See the FAIL lines above."
+          exit 1
