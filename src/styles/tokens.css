@@ -1,0 +1,122 @@
+/**
+ * Mudrexx Earn — design tokens.
+ * A fresh visual identity: deep "ink" surfaces, warm gold primary, teal/coral
+ * for market direction. No token here is copied from the previous frontend.
+ */
+
+:root {
+  /* ---- surfaces ------------------------------------------------------- */
+  --ink-950: #06080b;
+  --ink-900: #0a0d12;
+  --ink-850: #0e1219;
+  --ink-800: #131822;
+  --ink-750: #18202c;
+  --ink-700: #1e2735;
+
+  --surface-app: var(--ink-950);
+  --surface-sunken: var(--ink-900);
+  --surface-card: var(--ink-850);
+  --surface-raised: var(--ink-800);
+  --surface-overlay: rgba(6, 8, 11, 0.86);
+
+  --line-hair: rgba(255, 255, 255, 0.06);
+  --line-soft: rgba(255, 255, 255, 0.09);
+  --line-strong: rgba(255, 255, 255, 0.16);
+
+  /* ---- text ----------------------------------------------------------- */
+  --text-primary: #e9edf4;
+  --text-secondary: #a2abbb;
+  --text-faint: #6d7789;
+  --text-inverse: #0a0d12;
+
+  /* ---- brand ---------------------------------------------------------- */
+  --gold-300: #f7d795;
+  --gold-400: #eec268;
+  --gold-500: #e0ab41;
+  --gold-600: #c2902f;
+  --brand: var(--gold-400);
+  --brand-strong: var(--gold-500);
+  --brand-soft: rgba(238, 194, 104, 0.12);
+  --brand-line: rgba(238, 194, 104, 0.32);
+
+  /* ---- market direction ---------------------------------------------- */
+  --up: #2fd3a3;
+  --up-soft: rgba(47, 211, 163, 0.13);
+  --up-line: rgba(47, 211, 163, 0.34);
+  --down: #ff6f6f;
+  --down-soft: rgba(255, 111, 111, 0.13);
+  --down-line: rgba(255, 111, 111, 0.34);
+
+  /* ---- semantic ------------------------------------------------------- */
+  --info: #6aa9ff;
+  --info-soft: rgba(106, 169, 255, 0.13);
+  --warn: #f0b429;
+  --warn-soft: rgba(240, 180, 41, 0.13);
+  --danger: #ff6f6f;
+  --danger-soft: rgba(255, 111, 111, 0.12);
+  --success: #2fd3a3;
+  --success-soft: rgba(47, 211, 163, 0.12);
+
+  /* ---- spacing scale -------------------------------------------------- */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-7: 32px;
+  --sp-8: 40px;
+  --sp-9: 56px;
+  --sp-10: 72px;
+
+  /* ---- type ----------------------------------------------------------- */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+
+  --fs-2xs: 11px;
+  --fs-xs: 12px;
+  --fs-sm: 13px;
+  --fs-md: 14px;
+  --fs-lg: 16px;
+  --fs-xl: 19px;
+  --fs-2xl: 24px;
+  --fs-3xl: 31px;
+  --fs-4xl: 40px;
+  --fs-5xl: 54px;
+
+  --lh-tight: 1.15;
+  --lh-snug: 1.35;
+  --lh-body: 1.6;
+
+  --tracking-display: -0.03em;
+  --tracking-tight: -0.015em;
+  --tracking-wide: 0.08em;
+
+  /* ---- radii ---------------------------------------------------------- */
+  --r-xs: 4px;
+  --r-sm: 7px;
+  --r-md: 11px;
+  --r-lg: 16px;
+  --r-xl: 22px;
+  --r-pill: 999px;
+
+  /* ---- elevation ------------------------------------------------------ */
+  --sh-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --sh-2: 0 4px 14px rgba(0, 0, 0, 0.42);
+  --sh-3: 0 14px 40px rgba(0, 0, 0, 0.55);
+  --sh-brand: 0 6px 22px rgba(224, 171, 65, 0.18);
+
+  /* ---- motion --------------------------------------------------------- */
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --dur-fast: 120ms;
+  --dur: 200ms;
+  --dur-slow: 340ms;
+
+  /* ---- layout --------------------------------------------------------- */
+  --shell-max: 1440px;
+  --nav-h: 60px;
+  --mobile-nav-h: 60px;
+  --focus-ring: 0 0 0 2px var(--ink-950), 0 0 0 4px var(--gold-400);
+}

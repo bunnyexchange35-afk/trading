@@ -131,42 +131,88 @@ The one SQL file in the repo, `database/migrations/001_add_account_documents.sql
 
 ---
 
-## 5. Auth is hybrid, and the trading surface is **not** token-gated
+## 5. Auth — CORRECTED. A prefix-level gate covers every money route
 
-Only **10** routes run through `requireAuth`:
+> **Correction.** An earlier revision of this audit claimed most money routes were ungated.
+> That was wrong: it was based on grepping for per-route `requireAuth` arguments and missed a
+> **prefix-level mount**. The corrected finding below was then confirmed by live probes
+> (401 without a token, 403 cross-account).
 
-```
-GET  /api/tasks                  GET  /api/credit-score          GET  /api/credit-score/history
-GET  /api/user/account           GET  /api/support/tickets       POST /api/support/tickets
-POST /api/withdrawal/support     GET  /api/notifications         GET  /api/documents
-POST /api/nova/chat
-```
+`server.mjs:681` mounts `requireAuth` across seven prefixes:
 
-Everything else that touches money takes identity as a **plain `email`** in the query string or
-request body, with **no token check**:
-
-```
-POST /api/orders/create      GET  /api/wallet/summary       GET  /api/wallet/transactions
-GET  /api/wallet/frozen      POST /api/wallet/frozen/release POST /api/staking/stake
-POST /api/deposit/submit     POST /api/withdraw/submit      GET  /api/orders/list
-GET  /api/orders/status      POST /api/wallet/convert-demo  POST /api/wallet/claim-demo
-POST /api/wallet/demo/adjust POST /api/wallet/deposit/approve
+```js
+// Everything below this mount requires a valid bearer token from
+// POST /api/auth/login (or the token returned by registration)
+app.use(['/api/wallet', '/api/orders', '/api/deposit', '/api/withdraw',
+         '/api/staking', '/api/user', '/api/account'], requireAuth);
 ```
 
-`requireAuth` itself supports `Authorization: Bearer`, `x-auth-token`, and `?token=`, and when it
-does run it correctly rejects a mismatched `email` with `403` and defaults `email` to the token
-owner.
+So **all** wallet, order, deposit, withdraw, staking, user and account routes are token-gated —
+including `/api/wallet/deposit/approve`, `/api/wallet/demo/adjust` and `/api/account/*`, which
+have no per-route middleware. Ten further routes add `requireAuth` individually (`/api/tasks`,
+`/api/credit-score{,/history}`, `/api/user/account`, `/api/support/tickets` GET+POST,
+`/api/withdrawal/support`, `/api/notifications`, `/api/documents`, `/api/nova/chat`).
 
-Aggravating factor: these handlers call `getOrCreateUser(email)`, which **silently creates an
-account** for an unknown email (`server.mjs:214`) and falls back to `demo@mudrexx.com` when email
-is empty.
+`requireAuth` accepts `Authorization: Bearer`, `x-auth-token` or `?token=`, defaults `email` to
+the token owner, and **refuses cross-account access with 403** — verified live:
 
-**This is a backend authorization gap, not a frontend bug.** A fresh frontend must still send the
-bearer token on every call (so it is correct the moment the backend is gated) and must never
-expose these endpoints in a way that lets one user act on another's email. The gap should be
-reported, not quietly worked around.
+```
+GET /api/wallet/summary?email=<another user>  (own valid token) → 403
+  "This session can only access its own account."
+```
 
----
+Genuinely public (no token): `/api/health`, `/api`, `/verify`, `/api/markets`,
+`/api/market/klines`, `/api/markets/:symbol{,/ohlcv,/analysis}`, `/api/order/*`,
+`/api/nova/status`, `/api/auth/{register,login,me}`. `/api/admin/*` authenticates with an admin
+**code** instead (§6).
+
+### 🔴 The two real authorization gaps (both verified live)
+
+**(a) `POST /api/auth/login` verifies no password — and creates accounts.**
+
+```js
+app.post('/api/auth/login', (req, res) => {
+  const { email, name } = req.body || {};
+  if (!email) return res.status(400).json({ error: 'Email is required' });
+  const user = getOrCreateUser(normalized, name);      // ← creates if absent
+  res.json({ success: true, message: 'Welcome back', user, token: issueToken(user) });
+});
+```
+
+Live probe with an email that had never been registered:
+
+```
+POST /api/auth/register { email }            → 403 "Registration is by invitation only…"
+POST /api/auth/login    { email }  (no pwd)  → 200 + token, USR-1E7280052499 created,
+                                               demoBalance 10,000
+```
+
+**This defeats the invitation-only registration gate entirely** (§8). The gate is real and
+correctly enforced on `/register`, but `/login` is an unauthenticated account-creation and
+session-issuing endpoint for any email string. Highest-severity finding in this audit.
+
+**(b) `POST /api/wallet/deposit/approve` checks no staff role.**
+
+It *is* token-gated, but it never verifies the caller is staff — so an account can approve its
+**own** pending deposit. Live probe with the owner's own token:
+
+```
+POST /api/deposit/submit        { amount: 100000 }     → frozen, status 'processing'
+POST /api/wallet/deposit/approve { id: <that deposit> } → 200 success
+
+realBalance      ₹100   → ₹100,100
+depositCredited  ₹0     → ₹100,000      ← a credit-score input
+credit score     420    → 480
+```
+
+Self-service balance creation plus self-service credit-score inflation. Narrower than
+"anyone can do it to anyone", but still a privilege boundary that does not exist. A user
+frontend must not expose it.
+
+**(c) Related, lower severity:** `issueToken` overwrites `user.auth.token`, so a login
+**rotates** the token and invalidates any previous session (single active session per account).
+`POST /api/wallet/demo/adjust` accepts an arbitrary `delta` with no role check, though it only
+touches demo credits.
 
 ## 6. Admin is a shared-secret surface, currently living inside the user SPA
 
@@ -281,11 +327,11 @@ There is **no gateway, no UPI collect, no VPA, no USDT address, no QR** — and 
 returns **no payment instructions of any kind**. A deposit UI that shows "send to this UPI ID"
 would be inventing it.
 
-### 🔴 `POST /api/wallet/deposit/approve` is ungated and self-credits
+### 🔴 `POST /api/wallet/deposit/approve` self-credits with no role check
 
 `server.mjs:1144`, commented *"Approve pending deposit (sandbox verification)"*. Body
-`{ email, id }` — **no auth, no admin code**. It moves the frozen deposit straight to
-available balance **and** increments `wallet.depositCreditedTotal`:
+`{ email, id }`. It **is** token-gated by the prefix mount (§5), but it never checks that the
+caller is staff — so an account approves its **own** pending deposit:
 
 ```js
 if (isINR) user.wallet.depositCreditedTotal = Number(user.wallet.depositCreditedTotal || 0) + item.amount;
@@ -293,13 +339,28 @@ user.wallet.realBalance += item.amount;
 ```
 
 `depositCreditedTotal` is an input to `computeCreditScore` (deposit tier: 15 / 35 / 60 points).
-So an unauthenticated caller who knows an email and a deposit id can **credit their own deposit
-and raise their own credit score**. This is the highest-severity wiring hazard available to a
-new frontend: the endpoint is discoverable in the `/api` payload and looks like a legitimate
-"verify my deposit" button.
+Verified live with the owner's own token: ₹100 → ₹100,100 available, `depositCredited` ₹0 →
+₹100,000, credit score 420 → 480.
 
-`POST /api/wallet/demo/adjust` is likewise ungated and applies an arbitrary `delta` to
-`demoBalance`.
+Because the endpoint is listed in the public `GET /api` discovery payload and looks exactly like
+a legitimate "verify my deposit" button, it remains the highest-risk thing a new frontend could
+accidentally wire up. **It must not appear on any user surface.**
+
+`POST /api/wallet/demo/adjust` likewise has no role check and applies an arbitrary `delta`,
+though only to demo credits.
+
+---
+
+## 11b. `GET /api/wallet/frozen` returns `items`, not `frozen`
+
+```js
+res.json({ success: true, frozenBalance, frozenUsdtBalance, items: user.wallet.frozenItems });
+```
+
+Caught by exercising the live endpoint, not by reading the docs. A client typed as
+`{ frozen: [] }` compiles cleanly and silently renders an empty vault list while release-by-id
+still works — an easy bug to ship. Recorded here because it is the kind of shape detail the
+discovery payload does not describe.
 
 ---
 
@@ -399,7 +460,7 @@ compat layer is dropped, both proxy entries are dead config.
 |---|---|---|
 | 2 | Add `/api/staking/unstake` | **Does not exist.** Use `POST /api/wallet/frozen/release` `{email,id}` |
 | 2 | "Earn/Savings area" | INR-only, no accrual, client-supplied APY. Present honestly |
-| 3 | "deposit approval/status" | 🔴 `/api/wallet/deposit/approve` is **ungated self-credit** — exclude from UI |
+| 3 | "deposit approval/status" | 🔴 `/api/wallet/deposit/approve` needs a token but **no staff role** — a user self-approves their own deposit. Exclude from UI |
 | 3 | "withdrawal" | **Never executed.** Two competing endpoints; prefer `/api/withdrawal/support` |
 | 6 | "ticket status/replies" | **No reply endpoint, no status transitions.** `response` stays `null` forever |
 | 7 | "unread/read" notifications | **`unread` hardcoded to 0**; derived, capped at 10, no mutation endpoint |
@@ -410,7 +471,9 @@ compat layer is dropped, both proxy entries are dead config.
 | 9 | "Admin must be separated" | Confirmed — admin ships inside the user SPA bundle; secret is a shared code |
 | 10 | "Invitation code first-class" | Confirmed — server enforces it; current SPA has no `/register` route |
 | 13 | "Don't inherit `earn/v2/unknown`" | Confirmed — no route in this repo emits the V2 envelope |
-| — | *(not in proposal)* | **Trading/wallet/deposit/withdraw/staking routes are not token-gated** |
+| — | *(not in proposal)* | Money routes **are** token-gated (`app.use` prefix mount, :681) and cross-account access 403s |
+| — | *(not in proposal)* | 🔴 **`/api/auth/login` checks no password and creates accounts**, bypassing the invitation gate |
+| — | *(not in proposal)* | `/api/wallet/frozen` returns `items`, not `frozen` |
 | — | *(not in proposal)* | **No logout endpoint** — logout must be client-side |
 | — | *(not in proposal)* | Settlement is **lazy/on-read**: status advances only when you re-fetch |
 | — | *(not in proposal)* | "Flight Lab" branding is emitted **server-side**; cannot be fixed in frontend |

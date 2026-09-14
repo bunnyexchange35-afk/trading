@@ -107,24 +107,53 @@ canRelease:true, reason: reference || 'Verification in progress (Sandbox)' }` an
 frozen balance. **No gateway, no UPI collect, no wallet address, and the backend supplies
 NO payment instructions whatsoever.**
 
-**F10 — 🔴 `POST /api/wallet/deposit/approve` IS UNGATED AND SELF-CREDITS.**
-`{ email, id }`, no auth, no admin code. It moves a frozen deposit **straight to available
-balance** and increments `depositCreditedTotal` — which **feeds the credit score**. The
-source calls it "sandbox verification".
+**F10 — 🔴 `POST /api/wallet/deposit/approve` HAS NO STAFF-ROLE CHECK.**
+It *is* token-gated (see F11), but it never verifies the caller is staff — so an account approves
+its **own** pending deposit. Verified live with the owner's own token:
+`realBalance ₹100 → ₹100,100`, `depositCredited ₹0 → ₹100,000`, **credit score 420 → 480**
+(`depositCreditedTotal` is a scoring input).
+It is listed in the public `GET /api` discovery payload and looks exactly like a legitimate
+"verify my deposit" button.
 ⇒ **NEVER wire this into any user-facing surface.** See Phase 30.
 
-**F11 — 🔴 MOST MONEY ROUTES ARE NOT TOKEN-GATED.**
-Only **10** routes use `requireAuth`: `/api/tasks`, `/api/credit-score`,
-`/api/credit-score/history`, `/api/user/account`, `/api/support/tickets` (GET+POST),
-`/api/withdrawal/support`, `/api/notifications`, `/api/documents`, `/api/nova/chat`.
-**Not gated:** `/api/orders/create`, `/api/orders/list`, `/api/orders/status`,
-`/api/wallet/summary|transactions|frozen|frozen/release|deposit/approve|convert-demo|claim-demo|link-demo|demo/adjust`,
-`/api/deposit/submit`, `/api/withdraw/submit`, `/api/staking/stake`, `/api/account/*`.
-They take identity as a **plain `email`** in query/body, and call `getOrCreateUser(email)`
-which **silently creates an account** for an unknown email (falling back to
-`demo@mudrexx.com` when empty).
-⇒ Send `Authorization: Bearer <token>` on **every** call regardless. **Report the gap;
-do not paper over it, and do not rely on it.**
+**F11 — AUTH: money routes ARE gated; the real hole is LOGIN.**
+> *Corrected.* An earlier revision claimed money routes were ungated. That was wrong — it missed
+> a **prefix-level mount**. Verified live: 401 without a token, 403 cross-account.
+
+`server.mjs:681`:
+```js
+app.use(['/api/wallet','/api/orders','/api/deposit','/api/withdraw',
+         '/api/staking','/api/user','/api/account'], requireAuth);
+```
+So **every** wallet/order/deposit/withdraw/staking/user/account route requires a bearer token —
+including `deposit/approve`, `demo/adjust` and `/api/account/*`, which carry no per-route
+middleware. Ten more routes add `requireAuth` individually (tasks, credit-score{,/history},
+user/account, support/tickets GET+POST, withdrawal/support, notifications, documents, nova/chat).
+`requireAuth` accepts `Authorization: Bearer`, `x-auth-token` or `?token=`, defaults `email` to
+the token owner, and **refuses another account's email with 403**.
+Public by design: health, `/api`, verify, markets, klines, `markets/:symbol*`, `order/*`,
+`nova/status`, `auth/{register,login,me}`.
+
+🔴 **THE REAL GAP — `POST /api/auth/login` verifies no password and creates accounts:**
+```js
+const user = getOrCreateUser(normalized, name);   // creates if absent
+res.json({ success:true, message:'Welcome back', user, token: issueToken(user) });
+```
+Verified live:
+```
+POST /api/auth/register { email }           → 403 "Registration is by invitation only…"
+POST /api/auth/login    { email } (no pwd)  → 200 + token, account CREATED, 10,000 demo credits
+```
+⇒ **This defeats the invitation-only registration gate (F15).** The gate is correctly enforced on
+`/register`; `/login` is an unauthenticated account-creation + session-issuing endpoint for any
+email string. **Highest-severity finding.**
+⇒ Frontend consequences: (1) do **not** render a password field — it would be fake
+authentication; (2) attach `Authorization: Bearer <token>` to every request anyway; (3) resolve
+`email` from the session, never from a caller; (4) **report the login gap loudly.**
+
+⚠ Also: `issueToken` **overwrites** `user.auth.token`, so each login **rotates** the token and
+kills the previous session (one active session per account). And `/api/wallet/demo/adjust` takes
+an arbitrary `delta` with no role check, though only against demo credits.
 
 **F12 — ADMIN IS A SHARED-SECRET SURFACE CURRENTLY SHIPPED IN THE USER BUNDLE.**
 Admin auth is a **code**, not a token: `?code=` / `{ code }`, from `ADMIN_CODES` /
@@ -383,8 +412,9 @@ Secondary (reachable, not cluttering): Notifications · Documents · Account · 
 `unread`.** Either omit the badge, or derive an unread indicator **client-side** from items
 the user hasn't seen this session — and label it as session-local, never as server state.
 
-⚠ **Wallet summary in the shell** is ungated (`/api/wallet/summary?email=`, F11). Only
-render it for an authenticated session, using the session's own email.
+⚠ **Wallet summary in the shell** is token-gated (F11) and `requireAuth` defaults `email` to the
+token owner. Render it only for an authenticated session and never pass an email the user did not
+sign in with — a mismatched email is refused with 403.
 
 ==================================================
 PHASE 7 — LANDING PAGE
@@ -418,9 +448,13 @@ Implement: login, registration, invitation code, session persistence (`localStor
 reuse `mudrexx-session` or define one new key, not both), authenticated requests, logout
 (**client-side only — no endpoint exists**), session expiry, 401/403 handling, protected routes.
 
-⚠ **F11 — attach `Authorization: Bearer <token>` to EVERY request**, including the ungated
-ones, so the client is correct the moment the backend is gated. Never send another user's
-email; always resolve identity from the session.
+⚠ **F11 — attach `Authorization: Bearer <token>` to EVERY request.** The money routes are
+gated, so this is mandatory, not defensive. Never send another user's email; always resolve
+identity from the session (the backend refuses a mismatch with 403).
+
+⚠ **F11 — do NOT render a password field on sign-in.** The backend checks no credential, so a
+password box would be fake authentication. Ask for the email, disclose the gap in the UI, and
+report it.
 
 Do not create fake authentication. Do not expose credentials.
 
@@ -584,7 +618,7 @@ implement it honestly, and record the decision in the final report:**
 - **Recommended: `POST /api/withdrawal/support`** — auth-gated, does **not** debit, supports
   INR + USDT, creates a `Withdrawal` support ticket. Matches the source's stated intent
   (*"the website never executes payouts"*) and cannot lose user funds.
-- **`POST /api/withdraw/submit`** — debits `realBalance` immediately, **INR only**, ungated,
+- **`POST /api/withdraw/submit`** — token-gated, debits `realBalance` immediately, **INR only**,
   no destination validation, **no payout execution**. If you use it, you MUST disclose that
   the balance is debited now and fulfilment is manual/off-platform.
 
@@ -736,8 +770,8 @@ Requirements:
 - Do not expose user management, `/api/admin/wallet/adjust`, `/api/admin/orders/control`
   (forced win/lose/cancel), or system configuration to ordinary users.
 - 🔴 **Also keep `POST /api/wallet/deposit/approve` out of BOTH apps' user flows (F10).**
-  If it belongs anywhere, it belongs behind the admin code — and even then, flag that it is
-  ungated server-side.
+  If it belongs anywhere, it belongs behind the admin code — and even then, flag that the
+  endpoint itself checks no staff role (F10).
 
 ==================================================
 PHASE 28 — API CLIENT
@@ -754,8 +788,9 @@ routes. **No backend in this repo emits that envelope.** Target the single verif
 Keep `API_BASE = import.meta.env.VITE_API_URL ?? ''` (same-origin).
 Port the types from `src/types.ts` (F17).
 
-Handle the **ungated-email hazard (F11)** structurally: the client should derive `email`
-from the session and **never accept an arbitrary email argument** for user-scoped calls.
+Handle **identity** structurally: the client derives `email` from the session and **never accepts
+an arbitrary email argument** for user-scoped calls, so a cross-account 403 cannot be provoked
+from the UI.
 
 Do not keep multiple competing API clients.
 
@@ -791,16 +826,23 @@ backend secret, no service-binding secret, no admin credential, no private env v
 
 ⚠ **VERIFIED ISSUES TO REPORT — DO NOT SILENTLY FIX (fixing means editing the backend):**
 
-1. 🔴 **`POST /api/wallet/deposit/approve` is ungated and self-credits deposits** (F10).
-   It also inflates `depositCreditedTotal`, which feeds the credit score. **The frontend
-   must never call it.** Report as a **critical backend authorization gap.**
-2. 🔴 **Most money routes are not token-gated** and `getOrCreateUser(email)` silently creates
-   accounts for unknown emails (F11). Report as **critical**.
+1. 🔴 **`POST /api/auth/login` checks no password and creates accounts for any email** (F11),
+   which **bypasses the invitation-only registration gate** (F15). Report as **critical** —
+   this is the single worst finding.
+2. 🔴 **`POST /api/wallet/deposit/approve` has no staff-role check** (F10): a user self-approves
+   their own pending deposit, inflating `realBalance`, `depositCreditedTotal` and their credit
+   score (420 → 480 verified). **The frontend must never call it.** Report as **critical**.
 3. 🔴 **Hardcoded default `ADMIN_CODES` / `SUPER_ADMIN_CODES` in source and in
    `wrangler.jsonc` comments** (F12) — effectively published admin credentials. Report.
-4. 🟠 **`POST /api/wallet/demo/adjust` is ungated** and applies an arbitrary demo delta.
+4. 🟠 **`POST /api/wallet/demo/adjust`** applies an arbitrary demo delta with no role check.
 5. 🟠 **Client-supplied, unvalidated `apy` on `/api/staking/stake`** (F4).
-6. 🟠 **Legacy "Flight Lab" branding emitted server-side** (F19) — cannot be fixed client-side.
+6. 🟠 **Login rotates the token**, so a second sign-in silently kills the first session (F11).
+7. 🟠 **Legacy "Flight Lab" branding emitted server-side** (F19) — cannot be fixed client-side.
+
+✅ **Verified as SOUND — do not report these as gaps** (an earlier revision of this command got
+them wrong): money routes **are** token-gated via the `app.use` prefix mount at `server.mjs:681`,
+and cross-account access is correctly refused with **403**. The `requireAuth` email-ownership
+check works.
 
 The frontend is an untrusted client. The backend controls authorization, wallet, orders,
 settlement, permissions, identity, and admin actions — **except where F10/F11 show it
@@ -991,9 +1033,9 @@ flag it**, unless instructed otherwise.
 (21 routes missing)? **Proceed targeting Node/Docker**, and if a Worker deploy is demanded,
 stop and confirm which product areas may be disabled.
 
-**S3 — SELF-APPROVE DEPOSIT (F10).** Confirm it is **excluded** from the user frontend.
-It is a server-side authorization hole, not a feature. **Proceed by excluding it and
-reporting it as critical.** Do not wire it "because the backend offers it."
+**S3 — SELF-APPROVE DEPOSIT (F10).** Confirm it is **excluded** from the user frontend. It needs
+a token but no staff role, so it is a privilege hole rather than a user feature. **Proceed by
+excluding it and reporting it as critical.** Do not wire it "because the backend offers it."
 
 Everything else: proceed without asking.
 
@@ -1039,7 +1081,7 @@ COMPLETE ONLY WHEN:
 ✓ **Admin isolated at BUILD level — absent from the user bundle (F12)**
 ✓ No fake financial data; **all Phase 29 prohibitions satisfied**
 ✓ No duplicate trading / wallet engine; no client-side settlement
-✓ No secrets exposed; **F10/F11/F12 reported as backend gaps**
+✓ No secrets exposed; **the login gap (F11) and deposit self-approval (F10) reported as backend gaps**
 ✓ Responsive UI complete · Accessibility reviewed · Performance reviewed
 ✓ **`earn|v2|unknown` compat layer NOT ported (F16)**
 ✓ Typecheck passes · Tests pass · Build passes
