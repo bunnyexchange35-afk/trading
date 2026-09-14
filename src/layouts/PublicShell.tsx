@@ -103,7 +103,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
         </div>
         {children}
         <p className="xs faint" style={{ textAlign: 'center', marginTop: 'var(--sp-5)' }}>
-          Registration is by institute-issued invitation code only.
+            Create an account directly to get started.
         </p>
       </div>
     </div>

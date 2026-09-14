@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import { getMarkets } from '../../api';
 import { useAsync } from '../../hooks/useAsync';
-import { Badge, Button, Skeleton } from '../../components/ui';
+import { Button, Skeleton } from '../../components/ui';
 import { compactNumber, price, signedPercent } from '../../utils/format';
 
 const FEATURES = [
@@ -71,10 +71,9 @@ const FEATURES = [
 ];
 
 const STEPS = [
-  { n: '01', title: 'Get an invitation code', body: 'Registration is invitation-only. Your code is issued by the institute — the app never generates one.' },
-  { n: '02', title: 'Create your account', body: 'You start at ₹0.00 available balance with demo credits so you can learn the desk before risking anything.' },
-  { n: '03', title: 'Add funds for review', body: 'Submit a deposit and it is booked to frozen funds as pending until the team verifies it.' },
-  { n: '04', title: 'Trade and track', body: 'Place directional orders, watch them settle at expiry against the live price, and follow every ledger entry.' },
+  { n: '01', title: 'Create your account', body: 'Start directly at ₹0.00 available balance with demo credits so you can learn the desk before risking anything.' },
+  { n: '02', title: 'Add funds for review', body: 'Submit a deposit and it is booked to frozen funds as pending until the team verifies it.' },
+  { n: '03', title: 'Trade and track', body: 'Place directional orders, watch them settle at expiry against the live price, and follow every ledger entry.' },
 ];
 
 export default function LandingPage() {
@@ -101,9 +100,6 @@ export default function LandingPage() {
       <div className="page">
         {/* ---------------------------------------------------------- hero */}
         <section className="hero">
-          <Badge tone="brand">
-            <ShieldCheck size={12} /> Invitation-only access
-          </Badge>
           <h1 className="hero-title">
             A way to earn <em>in real life</em>
           </h1>
@@ -115,7 +111,7 @@ export default function LandingPage() {
           <div className="hero-cta">
             <Link to="/auth/register">
               <Button variant="primary" size="lg">
-                Join with an invitation code <ArrowRight size={17} />
+Create your account <ArrowRight size={17} />
               </Button>
             </Link>
             <Link to="/auth/login">
@@ -287,9 +283,9 @@ export default function LandingPage() {
 
         {/* --------------------------------------------------------------- cta */}
         <section style={{ marginTop: 'var(--sp-9)', textAlign: 'center' }}>
-          <h2 style={{ fontSize: 'var(--fs-3xl)' }}>Ready when your code is</h2>
+          <h2 style={{ fontSize: 'var(--fs-3xl)' }}>Ready when you are</h2>
           <p className="hero-sub" style={{ marginTop: 'var(--sp-3)' }}>
-            Enter the invitation code the institute assigned to you and open your desk.
+            Create your account directly and open your trading desk.
           </p>
           <div className="hero-cta">
             <Link to="/auth/register">

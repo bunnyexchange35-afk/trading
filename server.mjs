@@ -755,22 +755,18 @@ app.post('/api/auth/register', (req, res) => {
   const { name, email, phone, preferredCurrency, inviteCode } = req.body || {};
   if (!email) return res.status(400).json({ error: 'Email is required' });
 
-  // Stage 1 — registration is STRICTLY by institute-assigned invitation code
-  // (ADMIN_CODES / SUPER_ADMIN_CODES). No other code is accepted, user
-  // referral codes do not grant registration, and codes are never issued by
-  // the app itself — each participant receives their code from the institute.
+  // Registration is open. An optional admin code is retained for attribution,
+  // but it is never required to create an account.
   const normalized = email.trim().toLowerCase();
-  const codeRole = resolveRole(inviteCode);
-  if (!String(inviteCode || '').trim() || !codeRole) {
-    return res.status(403).json({ error: 'Registration is by invitation only. Enter the code assigned to you.' });
-  }
-
+  const codeRole = String(inviteCode || '').trim() ? resolveRole(inviteCode) : null;
   const user = getOrCreateUser(normalized, name);
   if (phone) user.phone = phone;
   if (preferredCurrency) user.preferredCurrency = preferredCurrency;
 
-  user.invitedBy = String(inviteCode).trim().toUpperCase();
-  user.invitedByType = codeRole === 'super' ? 'super' : 'admin';
+  if (codeRole) {
+    user.invitedBy = String(inviteCode).trim().toUpperCase();
+    user.invitedByType = codeRole === 'super' ? 'super' : 'admin';
+  }
 
   persist();
 

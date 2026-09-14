@@ -1,16 +1,8 @@
-/**
- * Registration — the invitation code is a first-class, required field.
- *
- * VERIFIED (audit F15): `POST /api/auth/register` rejects a missing or
- * unrecognised code with 403 "Registration is by invitation only…". Codes are
- * institute-issued admin/super-admin codes; the app never generates one and a
- * user's own referral code does NOT grant registration. Success returns a
- * bearer token, so we sign the user straight in.
- */
+/** Registration is open: new users can create an account directly. */
 
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowRight, Ticket, UserPlus } from 'lucide-react';
+import { ArrowRight, UserPlus } from 'lucide-react';
 import { useSession } from '../../app/session';
 import { errorMessage } from '../../api/client';
 import { Alert, Button, Field, Input, Select } from '../../components/ui';
@@ -24,7 +16,6 @@ export default function RegisterPage() {
     email: '',
     phone: '',
     preferredCurrency: 'INR' as 'INR' | 'USDT',
-    inviteCode: '',
   });
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -38,8 +29,6 @@ export default function RegisterPage() {
     if (!form.name.trim()) next.name = 'Enter your full name.';
     if (!form.email.trim()) next.email = 'Enter your email address.';
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) next.email = 'That email address does not look valid.';
-    // The backend hard-requires this; failing client-side is kinder than a 403.
-    if (!form.inviteCode.trim()) next.inviteCode = 'An invitation code is required to register.';
     setFieldErrors(next);
     return Object.keys(next).length === 0;
   };
@@ -55,7 +44,6 @@ export default function RegisterPage() {
         email: form.email.trim(),
         phone: form.phone.trim() || undefined,
         preferredCurrency: form.preferredCurrency,
-        inviteCode: form.inviteCode.trim(),
       });
       navigate('/dashboard', { replace: true });
     } catch (err) {
@@ -78,31 +66,6 @@ export default function RegisterPage() {
 
       <form className="auth-form" onSubmit={onSubmit} noValidate>
         {error && <Alert tone="error" title="Registration failed">{error}</Alert>}
-
-        {/* Invitation code first: it is the gate on the whole flow. */}
-        <div className="panel" style={{ borderColor: 'var(--brand-line)', background: 'var(--brand-soft)' }}>
-          <Field
-            label="Invitation code"
-            required
-            error={fieldErrors.inviteCode}
-            hint="Issued by the institute. Registration is invitation-only and the app cannot generate a code for you."
-          >
-            {({ id, describedBy, invalid }) => (
-              <Input
-                id={id}
-                aria-describedby={describedBy}
-                invalid={invalid || Boolean(fieldErrors.inviteCode)}
-                value={form.inviteCode}
-                onChange={set('inviteCode')}
-                placeholder="e.g. MUDREXX-ADMIN"
-                autoComplete="off"
-                spellCheck={false}
-                style={{ textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: 'var(--font-mono)' }}
-                prefix={<Ticket size={15} />}
-              />
-            )}
-          </Field>
-        </div>
 
         <Field label="Full name" required error={fieldErrors.name}>
           {({ id, describedBy, invalid }) => (

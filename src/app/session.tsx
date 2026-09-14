@@ -153,7 +153,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const response = await apiRegister({
         ...input,
         email: input.email.trim().toLowerCase(),
-        inviteCode: input.inviteCode.trim(),
+        ...(input.inviteCode?.trim() ? { inviteCode: input.inviteCode.trim() } : {}),
       });
       adopt(response.user.email || input.email.trim().toLowerCase(), response.token, response.user);
     },

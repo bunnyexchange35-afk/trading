@@ -86,8 +86,8 @@ export type RegisterInput = {
   email: string;
   phone?: string;
   preferredCurrency?: 'INR' | 'USDT';
-  /** Mandatory. The backend rejects registration without a valid code (F15). */
-  inviteCode: string;
+  /** Optional referral or admin code; registration also works without one. */
+  inviteCode?: string;
 };
 
 export const register = (input: RegisterInput) => post<AuthResponse>('/api/auth/register', input);

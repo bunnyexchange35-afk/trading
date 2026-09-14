@@ -654,17 +654,16 @@ async function handleRegister(body: Body) {
   const inviteCode = String(body.inviteCode || '').trim();
   if (!email) return badRequest('Email is required');
 
-  // Stage 1 — registration is STRICTLY by institute-assigned invitation code.
-  const codeRole = resolveRole(ENV_REF!, inviteCode);
-  if (!inviteCode || !codeRole) {
-    return forbidden('Registration is by invitation only. Enter the code assigned to you.');
-  }
-
+  // Registration is open. An optional admin code is retained for attribution,
+  // but it is never required to create an account.
+  const codeRole = inviteCode ? resolveRole(ENV_REF!, inviteCode) : null;
   const user = await getOrCreateUser(email, name);
   if (body.phone) user.phone = String(body.phone);
   if (body.preferredCurrency) user.preferredCurrency = String(body.preferredCurrency) === 'USDT' ? 'USDT' : 'INR';
-  user.invitedBy = inviteCode.toUpperCase();
-  user.invitedByType = codeRole === 'super' ? 'super' : 'admin';
+  if (codeRole) {
+    user.invitedBy = inviteCode.toUpperCase();
+    user.invitedByType = codeRole === 'super' ? 'super' : 'admin';
+  }
 
   const token = issueToken(user);
   await saveUser(user);
