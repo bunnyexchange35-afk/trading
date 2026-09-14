@@ -189,13 +189,13 @@ export default function AccountPage() {
                 <li className="small muted" style={{ display: 'flex', gap: 8 }}>
                   <ShieldCheck size={15} className="down" style={{ flex: 'none', marginTop: 2 }} />
                   <span>
-                    Two backend authorization gaps are open and reported: sign-in issues a session
-                    for <strong>any</strong> email without verifying a password — and creates the
-                    account if it does not exist, which bypasses the invitation-only registration
-                    gate; and a signed-in user can approve their own pending deposit, since that
-                    endpoint checks no staff role. Wallet and order routes are token-gated and
-                    cross-account access is refused, so this is not open access — but treat the
-                    account as demonstration-grade until both gaps are closed.
+                    Wallet and order routes are token-gated, cross-account access is refused, and
+                    the two reported authorization holes are now closed: sign-in can no longer
+                    create accounts (registration stays invitation-only), and deposit approval
+                    requires a staff code instead of accepting the account holder's own session.
+                    One known limitation remains: sign-in still verifies no credential, so
+                    whoever knows a registered email can open its session. Treat the account as
+                    demonstration-grade until real credentials exist.
                   </span>
                 </li>
               </ul>

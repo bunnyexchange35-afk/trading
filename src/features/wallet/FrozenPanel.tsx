@@ -6,10 +6,10 @@
  * vault (audit F3), cancels an open order, or pulls a pending deposit back out.
  *
  * 🔴 There is deliberately NO "approve deposit" control here. The backend's
- * `POST /api/wallet/deposit/approve` needs a token but performs NO staff-role
- * check, so an account can approve its own pending deposit and inflate the
- * credit-score input (audit F10, verified live: score 420 -> 480). It is not
- * exported by the API client and must never be reachable from a user surface.
+ * `POST /api/wallet/deposit/approve` is a staff action: it authenticates with an
+ * admin code, and it no longer accepts the account holder's own session (audit
+ * F10 — the self-approval hole, verified live before the fix: score 420 -> 480).
+ * It is still not exported by the API client, so no user surface can reach it.
  */
 
 import { useState } from 'react';

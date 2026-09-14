@@ -7,10 +7,11 @@
  * of any kind. So this form must not invent any — no UPI ID, no address, no QR.
  *
  * 🔴 Audit F10: no approve/verify control is rendered here or anywhere else.
- * `/api/wallet/deposit/approve` requires a token but checks no staff role, so it
- * would let a user self-credit real balance plus `depositCreditedTotal` (a
- * credit-score input). It is not exported by the API client, so this page cannot
- * reach it even by accident.
+ * `/api/wallet/deposit/approve` is staff-only (admin code) since the security
+ * fix — it used to accept the account holder's own session, which meant
+ * self-crediting real balance plus `depositCreditedTotal` (a credit-score
+ * input). It is not exported by the API client, so this page cannot reach it
+ * even by accident.
  */
 
 import { useState } from 'react';

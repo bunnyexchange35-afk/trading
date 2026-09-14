@@ -826,14 +826,18 @@ backend secret, no service-binding secret, no admin credential, no private env v
 
 ⚠ **VERIFIED ISSUES TO REPORT — DO NOT SILENTLY FIX (fixing means editing the backend):**
 
-1. 🔴 **`POST /api/auth/login` checks no password and creates accounts for any email** (F11),
-   which **bypasses the invitation-only registration gate** (F15). Report as **critical** —
-   this is the single worst finding.
-2. 🔴 **`POST /api/wallet/deposit/approve` has no staff-role check** (F10): a user self-approves
+1. ✅→ **`POST /api/auth/login` checked no password and created accounts for any email** (F11),
+   bypassing the invitation-only registration gate (F15). **FIXED** (security commit `4183c26`):
+   login is now a lookup — unknown emails get 404. **Still open:** sign-in verifies no
+   credential, so a known email opens that session.
+2. ✅ **`POST /api/wallet/deposit/approve` had no staff-role check** (F10): a user self-approved
    their own pending deposit, inflating `realBalance`, `depositCreditedTotal` and their credit
-   score (420 → 480 verified). **The frontend must never call it.** Report as **critical**.
+   score (420 → 480 verified). **FIXED** (`4183c26`): approval now authenticates with an admin
+   code, like `/api/admin/*`. The frontend still never calls it.
 3. 🔴 **Hardcoded default `ADMIN_CODES` / `SUPER_ADMIN_CODES` in source and in
    `wrangler.jsonc` comments** (F12) — effectively published admin credentials. Report.
+   **Now load-bearing** (`4183c26` gates deposit approval on these codes): any real deployment
+   MUST override both env vars.
 4. 🟠 **`POST /api/wallet/demo/adjust`** applies an arbitrary demo delta with no role check.
 5. 🟠 **Client-supplied, unvalidated `apy` on `/api/staking/stake`** (F4).
 6. 🟠 **Login rotates the token**, so a second sign-in silently kills the first session (F11).

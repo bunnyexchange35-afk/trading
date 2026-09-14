@@ -166,9 +166,12 @@ Genuinely public (no token): `/api/health`, `/api`, `/verify`, `/api/markets`,
 `/api/nova/status`, `/api/auth/{register,login,me}`. `/api/admin/*` authenticates with an admin
 **code** instead (§6).
 
-### 🔴 The two real authorization gaps (both verified live)
+### 🔴 The two real authorization gaps (verified live — **both FIXED**, security commit `4183c26`)
 
 **(a) `POST /api/auth/login` verifies no password — and creates accounts.**
+**Status: FIXED.** Login is now a lookup; unknown emails get 404 and nothing is created, so
+the invitation gate holds end to end. Residual, documented: sign-in still verifies no
+credential, so knowing a registered email opens that session.
 
 ```js
 app.post('/api/auth/login', (req, res) => {
@@ -192,6 +195,11 @@ correctly enforced on `/register`, but `/login` is an unauthenticated account-cr
 session-issuing endpoint for any email string. Highest-severity finding in this audit.
 
 **(b) `POST /api/wallet/deposit/approve` checks no staff role.**
+**Status: FIXED.** The route now authenticates with an admin code like every `/api/admin/*`
+route (contract `{email, id, code}`), is registered above the `requireAuth` mount, and no
+longer creates accounts. Deployment caveat: default `ADMIN_CODES` are published in source
+(§6/F12) and MUST be overridden via env — approval is exactly as strong as the configured
+codes.
 
 It *is* token-gated, but it never verifies the caller is staff — so an account can approve its
 **own** pending deposit. Live probe with the owner's own token:
@@ -460,7 +468,7 @@ compat layer is dropped, both proxy entries are dead config.
 |---|---|---|
 | 2 | Add `/api/staking/unstake` | **Does not exist.** Use `POST /api/wallet/frozen/release` `{email,id}` |
 | 2 | "Earn/Savings area" | INR-only, no accrual, client-supplied APY. Present honestly |
-| 3 | "deposit approval/status" | 🔴 `/api/wallet/deposit/approve` needs a token but **no staff role** — a user self-approves their own deposit. Exclude from UI |
+| 3 | "deposit approval/status" | 🔴 no staff role — self-approval (FIXED `4183c26`: admin-code gated). Still excluded from the user UI |
 | 3 | "withdrawal" | **Never executed.** Two competing endpoints; prefer `/api/withdrawal/support` |
 | 6 | "ticket status/replies" | **No reply endpoint, no status transitions.** `response` stays `null` forever |
 | 7 | "unread/read" notifications | **`unread` hardcoded to 0**; derived, capped at 10, no mutation endpoint |
@@ -472,7 +480,7 @@ compat layer is dropped, both proxy entries are dead config.
 | 10 | "Invitation code first-class" | Confirmed — server enforces it; current SPA has no `/register` route |
 | 13 | "Don't inherit `earn/v2/unknown`" | Confirmed — no route in this repo emits the V2 envelope |
 | — | *(not in proposal)* | Money routes **are** token-gated (`app.use` prefix mount, :681) and cross-account access 403s |
-| — | *(not in proposal)* | 🔴 **`/api/auth/login` checks no password and creates accounts**, bypassing the invitation gate |
+| — | *(not in proposal)* | 🔴 login checks no password and created accounts (creation FIXED `4183c26`; credential check still open) |
 | — | *(not in proposal)* | `/api/wallet/frozen` returns `items`, not `frozen` |
 | — | *(not in proposal)* | **No logout endpoint** — logout must be client-side |
 | — | *(not in proposal)* | Settlement is **lazy/on-read**: status advances only when you re-fetch |

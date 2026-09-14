@@ -71,10 +71,10 @@ export default function LoginPage() {
           <span className="row-tight" style={{ alignItems: 'flex-start' }}>
             <ShieldAlert size={14} style={{ flex: 'none', marginTop: 2 }} />
             <span>
-              The API issues a session for <strong>any</strong> email address without checking a
-              credential, and creates the account if it does not exist — so this form does not ask
-              for a password. Reported as a backend authorization gap; sign-in here is not proof of
-              identity.
+              Registration is invitation-only and sign-in now refuses unknown emails — but the API
+              still checks <strong>no credential</strong>, so this form does not ask for a password
+              and knowing a registered email is enough to open its session. Known limitation,
+              disclosed rather than hidden; sign-in here is not proof of identity.
             </span>
           </span>
         </Alert>

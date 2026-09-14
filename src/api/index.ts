@@ -11,10 +11,11 @@
  *    request, including the public ones.
  *
  * 2. Forbidden routes are simply not exported, so no page can reach them:
- *      POST /api/wallet/deposit/approve  — token-gated but NO staff-role check,
- *                                          so a user self-approves their own
- *                                          deposit and inflates the credit
- *                                          score input (audit F10)
+ *      POST /api/wallet/deposit/approve  — staff-only (admin code). It used to
+ *                                          accept the account holder's own
+ *                                          session (audit F10, fixed on this
+ *                                          branch); it remains excluded from
+ *                                          the user surface regardless
  *      POST /api/wallet/demo/adjust      — arbitrary demo delta, no role check
  *      POST /api/staking/unstake         — does not exist (F3)
  *      /api/admin/*                      — separate app (F12)
@@ -92,15 +93,16 @@ export type RegisterInput = {
 export const register = (input: RegisterInput) => post<AuthResponse>('/api/auth/register', input);
 
 /**
- * 🔴 VERIFIED: the backend checks NO password. `POST /api/auth/login` calls
- * `getOrCreateUser(email)` and returns a token — so it issues a session for any
- * email string and CREATES the account (with 10,000 demo credits) if it does not
- * exist. That bypasses the invitation-only gate on `/api/auth/register`, which
- * correctly 403s without a code.
+ * Credential model (honest version): the backend has NO password check, so no
+ * password parameter exists here — accepting one would be fake authentication.
+ * Two related facts, both verified live:
  *
- * Consequently no password parameter exists here: accepting one would be fake
- * authentication, and sending one would transmit a secret the backend discards.
- * The sign-in form says so out loud. Reported as a critical backend gap.
+ *  - FIXED (security commit on this branch): login no longer creates accounts.
+ *    It is a lookup — unknown emails get 404, so the invitation-only gate on
+ *    `/api/auth/register` actually holds end to end.
+ *  - STILL OPEN: sign-in verifies no credential. Knowing a registered email is
+ *    enough to open its session. The sign-in form discloses this instead of
+ *    hiding it behind a decorative password field.
  */
 export const login = (email: string) => post<AuthResponse>('/api/auth/login', { email });
 
