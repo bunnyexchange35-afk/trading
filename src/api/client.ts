@@ -25,6 +25,13 @@
 export const API_BASE: string =
   (import.meta.env.VITE_API_URL as string | undefined) ?? '';
 
+/**
+ * Optional gateway key for hosted API deployments. This is intentionally a
+ * separate header from the user's bearer session: the bearer identifies the
+ * signed-in account, while the API key identifies the API consumer/application.
+ */
+const API_KEY: string = (import.meta.env.VITE_API_KEY as string | undefined)?.trim() ?? '';
+
 const STORAGE_KEY = 'mudrexx.session.v1';
 
 export type StoredSession = { email: string; token: string; name?: string };
@@ -166,6 +173,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
         Accept: 'application/json',
         ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(API_KEY ? { 'X-API-Key': API_KEY } : {}),
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });

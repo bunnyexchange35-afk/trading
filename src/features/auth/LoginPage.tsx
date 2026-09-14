@@ -71,8 +71,8 @@ export default function LoginPage() {
           <span className="row-tight" style={{ alignItems: 'flex-start' }}>
             <ShieldAlert size={14} style={{ flex: 'none', marginTop: 2 }} />
             <span>
-              Registration is invitation-only and sign-in now refuses unknown emails — but the API
-              still checks <strong>no credential</strong>, so this form does not ask for a password
+              Sign-in now refuses unknown emails — but the API still checks <strong>no credential</strong>,
+              so this form does not ask for a password
               and knowing a registered email is enough to open its session. Known limitation,
               disclosed rather than hidden; sign-in here is not proof of identity.
             </span>
@@ -85,7 +85,7 @@ export default function LoginPage() {
       </form>
 
       <p className="small muted" style={{ marginTop: 'var(--sp-5)', textAlign: 'center' }}>
-        Have an invitation code?{' '}
+        New here?{' '}
         <Link to="/auth/register" className="gold strong">
           Create your account <ArrowRight size={12} style={{ verticalAlign: -1 }} />
         </Link>

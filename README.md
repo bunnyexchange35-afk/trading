@@ -182,4 +182,6 @@ Notes:
 | `BACKEND_ORIGIN` | Cloudflare Worker Var | Origin URL of the Express API that the worker proxies `/api/*` to (fallback if no service binding) |
 | `PORT` | Runtime | Port Express listens on (defaults to `process.env.PORT` or `8080`) |
 | `NODE_ENV` | Runtime | `production` in deployed environments |
+| `VITE_API_URL` | Build-time | Optional API origin; defaults to same-origin `/api` routes. |
+| `VITE_API_KEY` | Build-time | Optional gateway key sent as `X-API-Key`; configure it in the host's build secrets, never in Git. |
 | `VITE_TELEGRAM_URL` | Build-time | Telegram support channel link |
