@@ -61,7 +61,7 @@ export default function RegisterPage() {
         Join Mudrexx Earn
       </h1>
       <p className="small muted">
-        Your account opens with ₹0.00 available balance and demo credits for practice.
+        Your account opens with ₹0.00 available balance and credits.
       </p>
 
       <form className="auth-form" onSubmit={onSubmit} noValidate>

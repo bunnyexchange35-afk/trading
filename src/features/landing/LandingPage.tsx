@@ -41,7 +41,7 @@ const FEATURES = [
   {
     icon: <WalletIcon size={19} />,
     title: 'One transparent ledger',
-    body: 'Available, frozen and demo balances in INR and USDT, with every movement recorded as a ledger entry you can trace.',
+    body: 'Available, frozen and credit balances in INR and USDT, with every movement recorded as a ledger entry you can trace.',
   },
   {
     icon: <Coins size={19} />,
@@ -71,7 +71,7 @@ const FEATURES = [
 ];
 
 const STEPS = [
-  { n: '01', title: 'Create your account', body: 'Start directly at ₹0.00 available balance with demo credits so you can learn the desk before risking anything.' },
+  { n: '01', title: 'Create your account', body: 'Start directly at ₹0.00 available balance with credits so you can explore the desk before risking anything.' },
   { n: '02', title: 'Add funds for review', body: 'Submit a deposit and it is booked to frozen funds as pending until the team verifies it.' },
   { n: '03', title: 'Trade and track', body: 'Place directional orders, watch them settle at expiry against the live price, and follow every ledger entry.' },
 ];
@@ -126,7 +126,7 @@ Create your account <ArrowRight size={17} />
               { label: 'Markets tracked', value: String(markets.data?.length ?? '—') },
               { label: 'Order duration', value: '30s – 24h' },
               { label: 'Settlement', value: 'At expiry, live price' },
-              { label: 'Ledgers', value: 'INR · USDT · Demo' },
+              { label: 'Ledgers', value: 'INR · USDT · Credit' },
             ].map((s) => (
               <div className="stat" key={s.label}>
                 <span className="stat-label">{s.label}</span>

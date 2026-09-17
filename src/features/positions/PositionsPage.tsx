@@ -111,7 +111,7 @@ export default function PositionsPage() {
         <Stat label="Open positions" value={totals.count} small />
         <Stat label="Held (INR)" value={money(totals.inr)} foot="Frozen until settlement" small />
         <Stat label="Held (USDT)" value={`₮${totals.usdt.toLocaleString('en-US', { maximumFractionDigits: 2 })}`} small />
-        <Stat label="Demo exposure" value={`${totals.demo.toLocaleString('en-IN')} credits`} small />
+        <Stat label="Credit exposure" value={`${totals.demo.toLocaleString('en-IN')} credits`} small />
       </div>
 
       <Card title="Open positions" pad={false}>
@@ -174,7 +174,7 @@ export default function PositionsPage() {
                   <span className={`small ${order.side === 'up' ? 'up' : 'down'}`}>
                     {order.side === 'up' ? 'Up' : 'Down'}
                   </span>
-                  {order.accountType === 'demo' && <Badge tone="neutral">demo</Badge>}
+                  {order.accountType === 'demo' && <Badge tone="neutral">credit</Badge>}
                   <Badge tone="open">{durationLabel(order.durationSeconds)}</Badge>
                 </div>
                 <div className="xs faint mono">

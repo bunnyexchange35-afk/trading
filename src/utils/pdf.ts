@@ -107,7 +107,7 @@ export async function statementPdf(response: StatementResponse): Promise<void> {
       ['Total (INR)', money(balances.totalRealBalance)],
       ['Available (USDT)', `₮${balances.realUsdtBalance.toLocaleString('en-US', { maximumFractionDigits: 2 })}`],
       ['Frozen (USDT)', `₮${balances.frozenUsdtBalance.toLocaleString('en-US', { maximumFractionDigits: 2 })}`],
-      ['Demo credits', balances.demoBalance.toLocaleString('en-IN')],
+      ['Credits', balances.demoBalance.toLocaleString('en-IN')],
       ['Converted to date', money(balances.totalConverted)],
     ],
   });

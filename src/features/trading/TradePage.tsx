@@ -152,7 +152,7 @@ export default function TradePage() {
     if (!isDemo && numericAmount > availableFor(currency))
       return `Only ${money(availableFor(currency), currency)} is available.`;
     if (isDemo && numericAmount > (wallet?.demoBalance ?? 0))
-      return `Only ${(wallet?.demoBalance ?? 0).toLocaleString('en-IN')} demo credits available.`;
+      return `Only ${(wallet?.demoBalance ?? 0).toLocaleString('en-IN')} credits available.`;
     return null;
   }, [amount, numericAmount, activeCurrency, currency, isDemo, availableFor, wallet]);
 
@@ -359,7 +359,7 @@ export default function TradePage() {
                         className={`tab ${accountType === type ? 'tab-active' : ''}`}
                         onClick={() => setAccountType(type as 'real' | 'demo')}
                       >
-                        {type === 'demo' ? 'Demo credits' : 'Real balance'}
+                        {type === 'demo' ? 'Credits' : 'Real balance'}
                       </button>
                     ))}
                   </div>
@@ -385,7 +385,7 @@ export default function TradePage() {
               )}
 
               <Field
-                label={isDemo ? 'Demo credits' : `Amount (${currency})`}
+                label={isDemo ? 'Credits' : `Amount (${currency})`}
                 error={amountError}
                 hint={
                   activeCurrency && !isDemo
@@ -524,8 +524,8 @@ export default function TradePage() {
               <p className="xs faint" style={{ lineHeight: 'var(--lh-snug)' }}>
                 {isDemo ? (
                   <>
-                    <FlaskConical size={11} style={{ verticalAlign: -1 }} /> Demo orders use practice
-                    credits and never touch your real balance.
+                    <FlaskConical size={11} style={{ verticalAlign: -1 }} /> Credit orders use credit
+                    funds and do not touch your real balance.
                   </>
                 ) : (
                   <>
@@ -621,7 +621,7 @@ function BoardRow({
         <div className="row-tight">
           <strong className="small">{order.symbol}</strong>
           <span className="xs faint">{durationLabel(order.durationSeconds)}</span>
-          {order.accountType === 'demo' && <Badge tone="neutral">demo</Badge>}
+          {order.accountType === 'demo' && <Badge tone="neutral">credit</Badge>}
         </div>
         <div className="xs faint">
           {money(order.amount, order.accountType === 'demo' ? 'CREDITS' : order.currency)} · payout{' '}
