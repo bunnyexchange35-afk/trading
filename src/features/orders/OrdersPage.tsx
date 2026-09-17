@@ -217,7 +217,7 @@ function OrderRow({ order, busy, onCancel }: { order: TradeOrder; busy: boolean;
         </Link>
         {order.accountType === 'demo' && (
           <Badge tone="neutral">
-            <span style={{ marginLeft: 4 }}>demo</span>
+            <span style={{ marginLeft: 4 }}>credit</span>
           </Badge>
         )}
       </td>

@@ -65,14 +65,14 @@ export default function WalletPage() {
   const onConvert = async () => {
     const credits = Number(convertAmount || 0);
     if (!Number.isFinite(credits) || credits <= 0) {
-      setError('Enter a positive number of demo credits.');
+      setError('Enter a positive number of credits.');
       return;
     }
     setBusy(true);
     setError(null);
     try {
       const response = await convertDemo(credits);
-      setNotice(response.message ?? 'Demo credits converted.');
+      setNotice(response.message ?? 'Credits converted.');
       setConvertOpen(false);
       setConvertAmount('');
       await refreshAll();
@@ -94,7 +94,7 @@ export default function WalletPage() {
             Balances & ledger
           </h1>
           <p className="page-sub">
-            Available, frozen and demo balances across INR and USDT, with every movement the
+            Available, frozen and credit balances across INR and USDT, with every movement the
             backend has recorded.
           </p>
         </div>
@@ -132,7 +132,7 @@ export default function WalletPage() {
           foot={`Frozen ₮${(wallet?.frozenUsdtBalance ?? 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}`}
         />
         <Stat
-          label="Demo credits"
+          label="Credits"
           value={wallet ? wallet.demoBalance.toLocaleString('en-IN') : <Skeleton className="sk-line" style={{ width: 90 }} />}
           foot={`${rate} credit → ₹1 · ${money(wallet?.totalConverted ?? 0)} converted`}
         />
@@ -226,7 +226,7 @@ export default function WalletPage() {
                 tabs={[
                   { id: 'deposit', label: 'Deposit' },
                   { id: 'withdraw', label: 'Withdraw' },
-                  { id: 'convert', label: 'Demo → Real' },
+                  { id: 'convert', label: 'Credits → Real' },
                 ]}
               />
             </div>
@@ -235,14 +235,14 @@ export default function WalletPage() {
               {tab === 'withdraw' && <WithdrawPanel onDone={refreshAll} />}
               {tab === 'convert' && (
                 <div className="stack">
-                  <Alert tone="info" title="Demo credits are practice money">
-                    Convert demo credits into your real INR balance at the backend's rate of{' '}
+                  <Alert tone="info" title="Convert credits to INR balance">
+                    Convert credits into your real INR balance at the backend's rate of{' '}
                     <strong>{rate}</strong> per credit. The rate and the conversion are applied
                     server-side.
                   </Alert>
                   <div className="panel">
                     <div className="kv">
-                      <span className="kv-key">Demo credits</span>
+                      <span className="kv-key">Credits</span>
                       <span className="kv-val num">{(wallet?.demoBalance ?? 0).toLocaleString('en-IN')}</span>
                     </div>
                     <div className="kv">
@@ -255,7 +255,7 @@ export default function WalletPage() {
                     </div>
                   </div>
                   <Button variant="primary" block onClick={() => setConvertOpen(true)} disabled={!wallet?.demoBalance}>
-                    <Coins size={15} /> Convert demo credits
+                    <Coins size={15} /> Convert credits
                   </Button>
                 </div>
               )}
@@ -266,13 +266,13 @@ export default function WalletPage() {
         </div>
       </div>
 
-      <Modal open={convertOpen} onClose={() => !busy && setConvertOpen(false)} title="Convert demo credits">
+      <Modal open={convertOpen} onClose={() => !busy && setConvertOpen(false)} title="Convert credits">
         <div className="stack">
           <Alert tone="warn" title="This moves value into your real balance">
             Converted credits become real INR at {rate} per credit. The action cannot be undone
             from the frontend.
           </Alert>
-          <Field label="Demo credits" hint={`Up to ${(wallet?.demoBalance ?? 0).toLocaleString('en-IN')} available`}>
+          <Field label="Credits" hint={`Up to ${(wallet?.demoBalance ?? 0).toLocaleString('en-IN')} available`}>
             {({ id }) => (
               <Input
                 id={id}

@@ -126,7 +126,7 @@ export default function DashboardPage() {
           foot={`Frozen ₮${(wallet?.frozenUsdtBalance ?? 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}`}
         />
         <Stat
-          label="Demo credits"
+          label="Credits"
           value={wallet ? wallet.demoBalance.toLocaleString('en-IN') : <Skeleton className="sk-line" style={{ width: 90 }} />}
           foot={wallet ? `${wallet.conversionRate} credit → INR rate` : undefined}
         />
@@ -430,7 +430,7 @@ function OrderRow({ order }: { order: { id: string; symbol: string; side: 'up' |
           <span className={order.side === 'up' ? 'up small' : 'down small'}>
             {order.side === 'up' ? 'Up' : 'Down'}
           </span>
-          {order.accountType === 'demo' && <Badge tone="neutral">demo</Badge>}
+          {order.accountType === 'demo' && <Badge tone="neutral">credit</Badge>}
         </span>
         <span className="countdown" style={{ fontSize: 'var(--fs-lg)' }}>
           {countdown(ms)}

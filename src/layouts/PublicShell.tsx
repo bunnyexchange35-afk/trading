@@ -79,11 +79,11 @@ export function PublicShell({ children }: { children: ReactNode }) {
         >
           <div>
             <Brand />
-            <p className="xs" style={{ marginTop: 'var(--sp-3)', maxWidth: '58ch' }}>
-              Mudrexx Earn is a market-tracking and practice trading desk. Balances, orders and
-              settlements are maintained by the platform backend. Nothing here is investment
-              advice, and no outcome is guaranteed.
-            </p>
+              <p className="xs" style={{ marginTop: 'var(--sp-3)', maxWidth: '58ch' }}>
+                Mudrexx Earn is a market-tracking and trading desk. Balances, orders and
+                settlements are maintained by the platform backend. Nothing here is investment
+                advice, and no outcome is guaranteed.
+              </p>
           </div>
           <div className="xs">
             © {new Date().getFullYear()} Mudrexx Earn · Access by invitation only

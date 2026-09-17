@@ -77,7 +77,7 @@ export default function DocumentsPage() {
             ['Available (INR)', money(s.balances.realBalance)],
             ['Frozen (INR)', money(s.balances.frozenBalance)],
             ['Available (USDT)', `₮${s.balances.realUsdtBalance.toLocaleString('en-US', { maximumFractionDigits: 2 })}`],
-            ['Demo credits', s.balances.demoBalance.toLocaleString('en-IN')],
+            ['Credits', s.balances.demoBalance.toLocaleString('en-IN')],
             ['Ledger entries', String(s.transactions.length)],
             ['Held items', String(s.frozenItems.length)],
           ],
