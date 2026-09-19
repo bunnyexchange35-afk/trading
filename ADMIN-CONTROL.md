@@ -28,7 +28,7 @@ ADMIN_CODES="ADMIN1,ADMIN2" SUPER_ADMIN_CODES="BOSS1" node server.mjs
 ## Commands
 
 ```bash
-BASE="https://<your-backend-origin>"          # the Express backend (server.mjs) — NOT the static worker
+BASE="https://web-back.blackb0ss1.workers.dev"     # the backend Worker (NOT the static trading worker)
 CODE="MUDREXX-SUPER"                  # admin or super admin code
 ```
 

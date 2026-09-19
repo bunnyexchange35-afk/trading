@@ -33,15 +33,24 @@ In development, Vite proxies `/api` (and V2 `/a`, `/s` access links) to the Expr
 ### Split deploy (static Worker + separate API)
 
 The `trading` Worker is static-only, so the API is always a separate origin
-(`server.mjs` behind Docker/your host). Point the frontend at it at build time:
+(`server.mjs` behind Docker/your host). Production builds pin the API origin
+in `.env.production`:
+
+```
+VITE_API_URL=https://web-back.blackb0ss1.workers.dev
+```
+
+So `npm run deploy` (and any `vite build`) already bakes in every API call
+going to `https://web-back.blackb0ss1.workers.dev/api/*`. To target a
+different origin, set `VITE_API_URL` for the build:
 
 ```bash
-VITE_API_URL=https://<your-api-origin> npm run deploy
+VITE_API_URL=https://<other-api-origin> npm run deploy
 ```
 
 Requests then go to `<VITE_API_URL>/api/*` from the browser, so the API origin
-must allow CORS from the Worker's origin (`server.mjs` sends a permissive
-`access-control-allow-origin`).
+must allow CORS from the Worker's origin (`server.mjs` answers preflights:
+`OPTIONS` → `200` with `Access-Control-Allow-Origin/Methods/Headers`).
 
 
 ## Student desk extensions (backend-driven)
@@ -192,7 +201,7 @@ Notes:
 | `PORT` | Runtime | Port Express listens on (defaults to `process.env.PORT` or `8080`) |
 | `NODE_ENV` | Runtime | `production` in deployed environments |
 | `DATA_DIR` | Runtime | Optional. Overrides the user-store directory (`server/data`). |
-| `VITE_API_URL` | Build-time | Optional API origin; defaults to same-origin `/api` routes. Set it when the SPA is deployed to the static `trading` Worker and the API (`server.mjs`) runs on another origin. |
+| `VITE_API_URL` | Build-time | Optional API origin; defaults to same-origin `/api` routes. Production builds (`.env.production`) pin it to `https://web-back.blackb0ss1.workers.dev` — the backend Worker the static `trading` Worker frontend calls. |
 | `VITE_API_KEY` | Build-time | Optional gateway key sent as `X-API-Key`; configure it in the host's build secrets, never in Git. |
 | `VITE_TELEGRAM_URL` | Build-time | Telegram support channel link |
 

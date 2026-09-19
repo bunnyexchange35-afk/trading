@@ -1,6 +1,6 @@
 # Mudrexx Earn Backend API Documentation
 
-Base URL: `http://localhost:8080` (Local) / `VITE_API_URL` origin (Production split deploy — the static Cloudflare Worker serves no API)
+Base URL: `http://localhost:8080` (Local) / `https://web-back.blackb0ss1.workers.dev` (Production — pinned in `.env.production`; the static Cloudflare Worker serves no API)
 
 All request bodies are in `application/json` and responses return standard JSON.
 

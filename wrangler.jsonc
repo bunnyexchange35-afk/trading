@@ -29,6 +29,11 @@
   "compatibility_date": "2026-08-20",
 
   // Static assets only — no "main" entry point, so no code runs on the Worker.
+  //
+  // No bindings by design: **no D1**, no KV, no service bindings, no vars or
+  // secrets. All API calls go to the backend Worker origin pinned in
+  // .env.production (VITE_API_URL=https://web-back.blackb0ss1.workers.dev).
+  // Do not add a d1_databases / kv_namespaces / binding block here.
   "assets": {
     "directory": "./dist",
     "not_found_handling": "single-page-application"

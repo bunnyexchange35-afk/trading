@@ -143,7 +143,7 @@ Base URL: the **backend origin** — same origin when Express serves the SPA, or
 | `ADMIN_CODES` | Backend env | **Set this in production** | Comma-separated admin/invitation codes. **Defaults if unset: `MUDREXX-ADMIN, ADMIN-2024, ADMIN777, MEDRIX888, ADMIN`** — always override. |
 | `SUPER_ADMIN_CODES` | Backend env | No | Super admin codes (order control + wallet state commands). Defaults: `MUDREXX-SUPER, SUPER-2024`. See [`ADMIN-CONTROL.md`](ADMIN-CONTROL.md). |
 | `PORT` | Backend env | No | Defaults to `8080` |
-| `VITE_API_URL` | Build-time (frontend) | Split deploy | API origin the SPA calls, e.g. `https://your-backend.onrender.com`. Leave empty when Express serves the SPA (same-origin). |
+| `VITE_API_URL` | Build-time (frontend) | Split deploy | API origin the SPA calls. Pinned in `.env.production` to `https://web-back.blackb0ss1.workers.dev`; leave empty (same-origin) only when Express itself serves the SPA. |
 | `VITE_TELEGRAM_URL` | Build-time (frontend) | No | Telegram link for the contact button (default `https://t.me/MEDRIXEARN`) |
 | Cloudflare token | `wrangler login` or CF Builds | For deploy | Never commit this; Workers Builds auto-generates its own |
 
@@ -196,11 +196,16 @@ The Worker serves the SPA only — one deploy, nothing else to host, and nothing
 ```bash
 npx wrangler login            # first time only
 npm install
-VITE_API_URL=https://<your-backend-origin> npm run deploy
-                              # = npm run build && wrangler deploy -c wrangler.jsonc
+npm run deploy                # = npm run build && wrangler deploy -c wrangler.jsonc
 ```
 
-The Worker lands at `https://trading.rufflocrm.workers.dev` serving the SPA (all page routes, deep links). Every `/api/*` call goes to the backend origin from `VITE_API_URL` (set it at build time — the Worker itself cannot proxy anything).
+`.env.production` pins the API origin (`VITE_API_URL=https://web-back.blackb0ss1.workers.dev`), so every built-in API call resolves to `https://web-back.blackb0ss1.workers.dev/api/*`. Override it for a different backend:
+
+```bash
+VITE_API_URL=https://<other-backend-origin> npm run deploy
+```
+
+The Worker lands at `https://trading.rufflocrm.workers.dev` serving the SPA (all page routes, deep links). Every `/api/*` call goes to the backend origin from `VITE_API_URL` (baked in at build time — the Worker itself cannot proxy anything, has no D1/KV/bindings).
 
 Verify the deployment is the static-only contract:
 

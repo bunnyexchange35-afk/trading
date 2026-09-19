@@ -52,10 +52,11 @@ in-Worker backend (~1,475 lines) has been deleted: the `trading` Worker is now
 **static only** (assets + SPA fallback, no script, no `/api` handling — audit
 item *"API handler in trading Worker — should be removed, static only"*). The
 gateway below (service-binding proxy for `/api/*`, `/verify`, `/ws`) is still
-**not implemented**: API requests currently fall through to the SPA assets and
-the frontend must be built with `VITE_API_URL` pointing at the backend origin.
-Adding the gateway later is additive and safe — the one hard rule (no API
-logic on this Worker) is already enforced.
+**not implemented**: API requests fall through to the SPA assets and the
+frontend is built with `VITE_API_URL` pinned to the backend origin
+(`.env.production` → `https://web-back.blackb0ss1.workers.dev`). Adding the
+gateway later is additive and safe — the one hard rule (no API logic on this
+Worker) is already enforced.
 
 ## A.2 `wrangler.jsonc` (gateway)
 

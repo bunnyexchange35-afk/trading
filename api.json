@@ -4,8 +4,8 @@
   "description": "Trading desk API (training programme). Live Coinbase market graphs and real currency pairs. Registration is open — an institute code is optional and only used for attribution — and every wallet/order action requires a bearer token. Admin and super admin control every order outcome from the backend.",
   "servers": {
     "cloudflare_worker": "https://trading.rufflocrm.workers.dev (static SPA only — no API is served here)",
-    "backend_origin": "https://<your-backend-origin> (Express server.mjs — owns every /api/* route below)",
-    "note": "The Cloudflare worker is static only: it serves the built SPA with SPA fallback and has no API handler (the in-Worker backend was removed). All /api/* paths live on the Express backend (server.mjs), deployed separately. When the SPA is served from the static worker, build it with VITE_API_URL set to the backend origin; when Express serves the SPA itself, calls are same-origin."
+    "backend_origin": "https://web-back.blackb0ss1.workers.dev (Express server.mjs contract — owns every /api/* route below)",
+    "note": "The Cloudflare worker is static only: it serves the built SPA with SPA fallback and has no API handler (the in-Worker backend was removed). All /api/* paths live on the backend origin above. The SPA is built with VITE_API_URL set to it (see .env.production); when Express serves the SPA itself, calls are same-origin."
   },
   "environment": {
     "ADMIN_CODES": "Backend env var. Institute codes, comma separated. Registration does not require a code; when one is supplied it attributes the account to that admin (and grants admin commands). Default: MUDREXX-ADMIN,ADMIN-2024,ADMIN777,MEDRIX888,ADMIN — override in production.",
