@@ -3,15 +3,15 @@
   "version": "1.0.0",
   "description": "Trading desk API (training programme). Live Coinbase market graphs and real currency pairs. Registration is open — an institute code is optional and only used for attribution — and every wallet/order action requires a bearer token. Admin and super admin control every order outcome from the backend.",
   "servers": {
-    "cloudflare_worker": "https://trading.rufflocrm.workers.dev",
-    "backend_origin": "https://<your-backend-origin> (only for the optional Node/server.mjs deployment — the worker contains the full backend)",
-    "note": "Recommended: the single Cloudflare worker runs everything — SPA, live Coinbase markets, open registration (optional institute code), token sign-in, wallet, order engine and all admin/super admin commands. All /api/* paths work at the worker URL directly. Storage: STORE KV when bound, in-memory fallback otherwise. The Express backend (server.mjs) speaks the identical contract for local dev / self-hosting."
+    "cloudflare_worker": "https://trading.rufflocrm.workers.dev (static SPA only — no API is served here)",
+    "backend_origin": "https://web-back.blackb0ss1.workers.dev (Express server.mjs contract — owns every /api/* route below)",
+    "note": "The Cloudflare worker is static only: it serves the built SPA with SPA fallback and has no API handler (the in-Worker backend was removed). All /api/* paths live on the backend origin above. The SPA is built with VITE_API_URL set to it (see .env.production); when Express serves the SPA itself, calls are same-origin."
   },
   "environment": {
-    "ADMIN_CODES": "Institute codes, comma separated. Registration does not require a code; when one is supplied it attributes the account to that admin (and grants admin commands). Default: MUDREXX-ADMIN,ADMIN-2024,ADMIN777,MEDRIX888,ADMIN — override in production.",
-    "SUPER_ADMIN_CODES": "Super admin codes (order control + wallet state control). Default: MUDREXX-SUPER,SUPER-2024 — override in production.",
-    "BACKEND_ORIGIN": "Worker variable pointing at the backend origin.",
-    "DATA_DIR": "Optional. Overrides the user-store directory (server/data)."
+    "ADMIN_CODES": "Backend env var. Institute codes, comma separated. Registration does not require a code; when one is supplied it attributes the account to that admin (and grants admin commands). Default: MUDREXX-ADMIN,ADMIN-2024,ADMIN777,MEDRIX888,ADMIN — override in production.",
+    "SUPER_ADMIN_CODES": "Backend env var. Super admin codes (order control + wallet state control). Default: MUDREXX-SUPER,SUPER-2024 — override in production.",
+    "DATA_DIR": "Optional. Overrides the user-store directory (server/data).",
+    "VITE_API_URL": "Build-time frontend variable. API origin for split deploys (static worker + remote backend); empty means same-origin /api routes."
   },
   "auth": {
     "condition_1_registration_is_open": {
@@ -80,7 +80,7 @@
       "markets": {
         "method": "GET",
         "path": "/api/markets",
-        "note": "32 assets, live Coinbase quotes, served natively by the worker"
+        "note": "32 assets, live Coinbase quotes, served by the backend (server.mjs)"
       },
       "klines": {
         "method": "GET",
@@ -331,7 +331,7 @@
       }
     },
     "student_desk": {
-      "note": "Student-facing extensions added to the Earn frontend contract. The Cloudflare worker passes these through to the bound backend (BACKEND service binding or BACKEND_ORIGIN, e.g. mudrexxback); server.mjs implements them for local dev. The frontend degrades gracefully (honest 'unavailable' states) when an endpoint is not implemented.",
+      "note": "Student-facing extensions added to the Earn frontend contract. The Express backend (server.mjs) implements them; the static Cloudflare worker serves no API. The frontend degrades gracefully (honest 'unavailable' states) when an endpoint is not implemented.",
       "order_config": {
         "config": "GET /api/order/config -> { success, config: { assets[], currencies[{code,enabled,minAmount,maxAmount,quickAmounts}], durations[], payoutPercents[], defaultDuration, defaultPayoutPercent, settlement{...} } }",
         "assets": "GET /api/order/assets",

@@ -1,8 +1,8 @@
 /**
  * Positions — an explicitly DERIVED view.
  *
- * Audit F5: there is no positions API in either backend. `grep positions`
- * across `server.mjs` and `trading-worker/src/index.ts` returns nothing.
+ * Audit F5: there is no positions API in the backend. `grep positions`
+ * across `server.mjs` returns nothing.
  * This page composes open orders from `/api/orders/list` with order-category
  * holds from `/api/wallet/frozen` and says so plainly. No authoritative
  * position state, margin or liquidation level is invented; the indicative

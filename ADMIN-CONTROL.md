@@ -9,7 +9,7 @@ Paste-ready reference for the training programme backend. All control is **backe
 2. **Sign-in required** — sign up / sign in return a bearer token (`Authorization: Bearer <token>`); every wallet/order/deposit/staking call requires it and can only touch its own account.
 
 - **Backend code**: `server.mjs` → "ORDER ENGINE" + "ADMIN & SUPER ADMIN ORDER CONTROL ROOM" sections
-- **Works through Cloudflare Workers**: every `/api/*` command below is implemented **inside** the `trading` worker (https://trading.rufflocrm.workers.dev) — no separate backend required. The same contract is served by `server.mjs` when self-hosting.
+- **Where it runs**: on the backend host (Express — self-hosted or Docker). The `trading` Cloudflare Worker is **static only** (SPA assets, no API handler), so the admin commands must be driven against the backend origin, not the Worker URL.
 
 ## Roles
 
@@ -28,7 +28,7 @@ ADMIN_CODES="ADMIN1,ADMIN2" SUPER_ADMIN_CODES="BOSS1" node server.mjs
 ## Commands
 
 ```bash
-BASE="https://trading.rufflocrm.workers.dev"   # the deployed worker (full backend inside)
+BASE="https://web-back.blackb0ss1.workers.dev"     # the backend Worker (NOT the static trading worker)
 CODE="MUDREXX-SUPER"                  # admin or super admin code
 ```
 
@@ -99,13 +99,11 @@ curl "$BASE/api/wallet/summary?email=user@example.com"
 # local
 npm install && npm run build && node server.mjs            # API + SPA on :8080
 
-# cloudflare worker: SPA + live markets + full backend (no separate host needed)
+# cloudflare worker: static SPA only (no API — build with VITE_API_URL=<backend origin>)
 npm run deploy                                              # worker: trading
-npm run verify:deployed                                     # confirm script + assets are live
-# custom codes: Cloudflare dashboard -> trading -> Settings -> Variables & Secrets
-#   ADMIN_CODES / SUPER_ADMIN_CODES  (then re-deploy)
+npm run verify:deployed                                     # confirm the static-only contract
 
-# or self-host the Express backend instead (same contract, same commands)
+# backend: self-host the Express API (same contract, same commands)
 ADMIN_CODES="..." SUPER_ADMIN_CODES="..." npm start
 ```
 

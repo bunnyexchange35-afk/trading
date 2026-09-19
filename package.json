@@ -12,7 +12,6 @@
     "typecheck": "tsc --noEmit",
     "test": "tsc --noEmit && node --test test/api.test.mjs",
     "deploy": "npm run build && wrangler deploy -c wrangler.jsonc",
-    "worker:deploy": "npm --prefix trading-worker run deploy",
     "verify:deployed": "node scripts/verify-deployed-worker.mjs"
   },
   "engines": {
