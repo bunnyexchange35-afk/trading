@@ -2,17 +2,19 @@
   // ---------------------------------------------------------------------------
   // Canonical deploy configuration — repo root.
   //
-  // Cloudflare **Workers Builds** runs its deploy command from the repo root
-  // and, when it cannot find a Wrangler configuration file there, it falls back
-  // to automatic framework detection. For a Vite app that produces a
-  // **static-assets-only** Worker: the SPA is served, but `src/index.ts` (the
-  // API backend) is never deployed. The visible symptom is
-  // `GET /api/health` returning index.html and
-  // `POST /api/auth/register` returning **405 Method Not Allowed** (static
-  // assets only allow GET/HEAD).
+  // The `trading` Worker is a STATIC site: it serves the built SPA (./dist) with
+  // single-page-application fallback and nothing else. There is no Worker
+  // script and no API handler — the in-Worker API backend was removed on
+  // purpose (audit: "API handler in trading Worker — should be removed,
+  // static only"). The backend is `server.mjs` (Express, Docker) deployed
+  // separately; point the frontend at it with the build-time VITE_API_URL
+  // variable, or self-host the SPA + API together with `npm start`.
   //
-  // This file exists so the default `npx wrangler deploy` now picks up the full
-  // Worker — script + assets — from the repo root.
+  // Symptom of a request that still hits this Worker expecting an API:
+  //   GET  /api/health            -> index.html (SPA fallback)
+  //   POST /api/auth/register     -> 405 Method Not Allowed
+  //                               (static assets only allow GET/HEAD)
+  // That is the intended behaviour — `npm run verify:deployed` asserts it.
   //
   // Deploy:  npm run deploy   (= npm run build && wrangler deploy -c wrangler.jsonc)
   // Verify:  npm run verify:deployed
@@ -24,44 +26,11 @@
   // makes Workers Builds deploy somewhere else (or fail the name check).
   "name": "trading",
 
-  // The Worker entry point: SPA host + live markets + the full auth/wallet/order
-  // backend (register, login, wallets, deposits, orders, admin commands).
-  "main": "trading-worker/src/index.ts",
-
   "compatibility_date": "2026-08-20",
 
-  // The built SPA (npm run build). SPA fallback keeps deep links such as
-  // /auth/register working; API paths never match an asset, so they are always
-  // handled by the Worker script above.
+  // Static assets only — no "main" entry point, so no code runs on the Worker.
   "assets": {
     "directory": "./dist",
-    "binding": "ASSETS",
     "not_found_handling": "single-page-application"
-  },
-
-  // OPTIONAL persistent user/order storage. Without it the Worker runs on an
-  // in-memory store and accounts are reset by every deploy. For persistence:
-  //   npx wrangler kv namespace create USERS
-  // then paste the printed id below and re-deploy.
-  //
-  // "kv_namespaces": [
-  //   { "binding": "STORE", "id": "<YOUR-KV-NAMESPACE-ID>" }
-  // ],
-
-  // Institute invitation codes (comma separated) — used for admin attribution
-  // and the admin/super-admin control commands. Registration itself is open.
-  // Defaults if unset:
-  //   ADMIN_CODES:       MUDREXX-ADMIN,ADMIN-2024,ADMIN777,MEDRIX888,ADMIN
-  //   SUPER_ADMIN_CODES: MUDREXX-SUPER,SUPER-2024
-  // Prefer the dashboard (Settings -> Variables & Secrets) or `wrangler secret
-  // put` for real values: a config committed to git should not carry them.
-  //
-  // "vars": {
-  //   "ADMIN_CODES": "CODE1,CODE2",
-  //   "SUPER_ADMIN_CODES": "BOSS1"
-  // },
-
-  "observability": {
-    "enabled": true
   }
 }

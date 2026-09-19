@@ -1,6 +1,6 @@
 # Mudrexx Earn Backend API Documentation
 
-Base URL: `http://localhost:8080` (Local) / set `BACKEND_ORIGIN` on the Cloudflare Worker (Production)
+Base URL: `http://localhost:8080` (Local) / `VITE_API_URL` origin (Production split deploy — the static Cloudflare Worker serves no API)
 
 All request bodies are in `application/json` and responses return standard JSON.
 
@@ -25,7 +25,7 @@ Health check probe for uptime monitoring and hosting platforms.
 ---
 
 ### `GET /api/markets`
-Fetches live 24-hour quotes and A/B staking vault APYs for 32 tracked assets from Coinbase Exchange public data feeds, with an in-process cache and a warm-cache fallback. Served natively by the Cloudflare Worker (or by `server.mjs` locally) — no backend origin required.
+Fetches live 24-hour quotes and A/B staking vault APYs for 32 tracked assets from Coinbase Exchange public data feeds, with an in-process cache and a warm-cache fallback. Served by the Express backend (`server.mjs`) — the static Cloudflare Worker serves no API.
 
 **Response `200 OK`:**
 ```json

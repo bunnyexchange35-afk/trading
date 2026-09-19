@@ -47,11 +47,15 @@ Browser ──► trading Worker ──┬──► ASSETS (dist/, SPA fallback)
                               └──► /ws ──► proxied upgrade to backend (only after backend ships WS)
 ```
 
-**⚠ VERIFIED — current repo state differs.** Today the `trading` Worker *is* the
-backend (`trading-worker/src/index.ts`, ~1,475 lines) with `BACKEND` /
-`BACKEND_ORIGIN` passthrough only for unimplemented paths. The gateway below is
-the target: adding it means deleting the in-Worker backend (see A.5), so agree
-the cutover with the backend owner first.
+**⚠ STATUS — in-Worker backend removed; gateway proxy not implemented.** The
+in-Worker backend (~1,475 lines) has been deleted: the `trading` Worker is now
+**static only** (assets + SPA fallback, no script, no `/api` handling — audit
+item *"API handler in trading Worker — should be removed, static only"*). The
+gateway below (service-binding proxy for `/api/*`, `/verify`, `/ws`) is still
+**not implemented**: API requests currently fall through to the SPA assets and
+the frontend must be built with `VITE_API_URL` pointing at the backend origin.
+Adding the gateway later is additive and safe — the one hard rule (no API
+logic on this Worker) is already enforced.
 
 ## A.2 `wrangler.jsonc` (gateway)
 

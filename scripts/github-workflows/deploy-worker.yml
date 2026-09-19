@@ -8,13 +8,13 @@ name: Deploy Worker
 # Until it lives under `.github/workflows/`, GitHub will not run it.
 # ---------------------------------------------------------------------------
 #
-# Manual, deterministic deploy of the full Worker (SPA + API backend) to the
-# `trading` Worker that serves https://trading.rufflocrm.workers.dev.
+# Manual, deterministic deploy of the STATIC site to the `trading` Worker that
+# serves https://trading.rufflocrm.workers.dev.
 #
-# This is an alternative to Cloudflare Workers Builds: it always deploys the
-# Worker script (`trading-worker/src/index.ts`) together with the built SPA, so
-# the "assets-only deployment" state cannot happen (that state makes
-# POST /api/auth/register answer 405).
+# The Worker is static-only: built SPA assets with single-page-application
+# fallback, no Worker script and no API handler (the in-Worker backend was
+# removed — the API is `server.mjs`, deployed separately). The verification
+# step asserts that contract: SPA served, /api/* NOT answered by an API.
 #
 # One-time setup — add these repository secrets (Settings -> Secrets and
 # variables -> Actions):
@@ -66,7 +66,7 @@ jobs:
       - name: Build frontend
         run: npm run build
 
-      - name: Deploy Worker (script + assets)
+      - name: Deploy static assets (assets-only Worker)
         run: npx wrangler deploy -c wrangler.jsonc
 
       - name: Verify the deployment is live

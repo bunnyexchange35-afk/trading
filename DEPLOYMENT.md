@@ -14,28 +14,28 @@ A India-first crypto earn/trading desk: live Coinbase-powered prices across 32 a
 
 ## 2. Architecture
 
-**Recommended: everything inside one Cloudflare Worker** (`npm run deploy` — that's the whole deploy). The worker serves the SPA, the live market endpoints, AND the complete backend (invitation-only registration, bearer-token sign-in, wallet, order engine, admin/super-admin control commands). Storage is the optional `STORE` KV namespace — without it the worker runs on an in-memory store that resets on each deploy (fine for a trial; add KV for persistence).
+**The Cloudflare Worker is static-only.** `npm run deploy` ships the built SPA to the `trading` Worker (assets + single-page-application fallback) — and nothing else. The in-Worker API handler was removed on purpose (audit: *"API handler in trading Worker — should be removed, static only"*): no Worker script runs, there is no API on the Worker, and no storage exists at the edge. The backend is `server.mjs` (Express) — deployed separately or self-hosted on the same server that serves `dist/`.
 
 ```
-                        ┌─────────────────────────────────────────┐
-   Browser ───────────▶ │  Cloudflare Worker  (trading)           │
-                        │                                         │
-                        │  • serves dist/ SPA (all page routes)   │
-                        │  • live markets: /api/markets, klines   │
-                        │    (Coinbase public, edge-cached)       │
-                        │  • FULL BACKEND: invitation-only        │
-                        │    register, bearer-token sign-in,      │
-                        │    wallet, frozen funds, deposits,      │
-                        │    staking, the order engine and the    │
-                        │    admin / super admin control commands │
-                        │  • storage: STORE KV (persistent) or    │
-                        │    in-memory fallback (resets/redeploy) │
-                        │  • optional BACKEND / BACKEND_ORIGIN    │
-                        │    passthrough for anything else        │
-                        └─────────────────────────────────────────┘
+   ┌──────────────────────────────┐        ┌──────────────────────────────┐
+   │  Cloudflare Worker (trading) │        │  Express backend (server.mjs)│
+   │  STATIC ONLY                 │        │  separate host / Docker      │
+   │                              │        │                              │
+   │  • serves dist/ SPA          │  CORS  │  • auth, wallets, deposits   │
+   │  • SPA fallback (all routes) │ ─────► │  • orders, staking, admin    │
+   │  • no script, no /api        │        │  • Coinbase market endpoints │
+   │                              │        │  • server/data/users.json    │
+   └──────────────────────────────┘        └──────────────────────────────┘
 ```
 
-The Express server (`server.mjs`) implements the exact same contract for local development and self-hosting (Option A) — same endpoints, same invitation codes, same tokens.
+The frontend reaches the API two ways:
+
+- **Same-origin** — serve `dist/` from Express itself (`npm start`, Option A). No extra config.
+- **Split deploy** — static Worker + remote API: build with `VITE_API_URL=https://<api-origin>` so the SPA calls the backend cross-origin (Option B).
+
+Requests that hit the static Worker expecting an API get the SPA fallback: `GET /api/health` → `index.html`, `POST /api/auth/register` → `405 Method Not Allowed`. That is the intended contract (`npm run verify:deployed` asserts it).
+
+The Express server (`server.mjs`) implements the full API — see [`ADMIN-CONTROL.md`](ADMIN-CONTROL.md) for the admin command summary.
 
 Repo layout:
 
@@ -45,9 +45,8 @@ Repo layout:
 | `dist/` | Built frontend output (`npm run build`) — served by worker or Express |
 | `server.mjs` | The Express **backend code** — all wallet/auth/order APIs + the order engine (see [`ADMIN-CONTROL.md`](ADMIN-CONTROL.md) for the admin command summary) |
 | `server/data/users.json` | Persistent user store (gitignored — mount a volume in prod) |
-| `trading-worker/` | Cloudflare Worker — SPA host, native market API **and the full auth/wallet/order backend** |
+| `wrangler.jsonc` | Static Worker config: name `trading`, assets `dist/`, SPA fallback — no `main`, no script |
 | `Dockerfile`, `docker-compose.yml`, `.dockerignore` | One-command backend deploy (builds frontend, serves SPA + API) |
-| `wrangler.jsonc` (root) + `trading-worker/wrangler.jsonc` | Worker config: name `trading`, entry `trading-worker/src/index.ts`, assets `dist/`, SPA fallback (keep both in sync) |
 | `test/api.test.mjs` | 20 backend tests (`npm test`) |
 
 ---
@@ -79,17 +78,17 @@ Repo layout:
 
 ## 4. Complete API reference
 
-Base URL: **same origin** (`/api/...`). Full request/response examples live in [`API.md`](API.md).
+Base URL: the **backend origin** — same origin when Express serves the SPA, or the `VITE_API_URL` origin on a split deploy. The static Cloudflare Worker serves **no** API. Full request/response examples live in [`API.md`](API.md).
 
-### 4.1 Served natively by the Cloudflare Worker (no backend needed)
+### 4.1 Served by the backend (`server.mjs`)
+
+**Markets (Coinbase public, keyless)**
 
 | Method | Endpoint | Purpose |
 |---|---|---|
 | GET | `/api/health` | Uptime probe |
-| GET | `/api/markets` | Live 24h quotes + staking APYs for 32 assets (Coinbase, edge-cached, warm fallback) |
+| GET | `/api/markets` | Live 24h quotes + staking APYs for 32 assets (Coinbase, warm fallback) |
 | GET | `/api/market/klines?symbol=BTC&interval=1m` | Candles for charts (`1m 5m 15m 1h`) |
-
-### 4.2 Served by the backend (`server.mjs`) — proxied through the worker
 
 **Auth & profile**
 
@@ -144,9 +143,7 @@ Base URL: **same origin** (`/api/...`). Full request/response examples live in [
 | `ADMIN_CODES` | Backend env | **Set this in production** | Comma-separated admin/invitation codes. **Defaults if unset: `MUDREXX-ADMIN, ADMIN-2024, ADMIN777, MEDRIX888, ADMIN`** — always override. |
 | `SUPER_ADMIN_CODES` | Backend env | No | Super admin codes (order control + wallet state commands). Defaults: `MUDREXX-SUPER, SUPER-2024`. See [`ADMIN-CONTROL.md`](ADMIN-CONTROL.md). |
 | `PORT` | Backend env | No | Defaults to `8080` |
-| `BACKEND_ORIGIN` | Worker var (CF dashboard) | For Option B | e.g. `https://your-backend.onrender.com` — worker proxies non-native `/api/*` here |
-| `BACKEND` | Worker service binding | Optional | Alternative to `BACKEND_ORIGIN`: bind directly to another Worker |
-| (KV) `config:backend-url` | Worker KV binding | Optional | Change backend URL from the dashboard without redeploying |
+| `VITE_API_URL` | Build-time (frontend) | Split deploy | API origin the SPA calls, e.g. `https://your-backend.onrender.com`. Leave empty when Express serves the SPA (same-origin). |
 | `VITE_TELEGRAM_URL` | Build-time (frontend) | No | Telegram link for the contact button (default `https://t.me/MEDRIXEARN`) |
 | Cloudflare token | `wrangler login` or CF Builds | For deploy | Never commit this; Workers Builds auto-generates its own |
 
@@ -192,38 +189,34 @@ docker run -d --name mudrex-earn -p 8080:8080 \
 
 Notes: `PORT` is respected (platforms that inject it work as-is); user data lives at `/app/server/data` (declared `VOLUME`); admin codes default to a placeholder in compose — **always pass your own**.
 
-### Option B — Cloudflare Worker, full stack (recommended, ready build)
+### Option B — Cloudflare Worker, static site (recommended for the frontend)
 
-The worker IS the backend — one deploy, nothing else to host:
+The Worker serves the SPA only — one deploy, nothing else to host, and nothing to keep updated at the edge:
 
 ```bash
 npx wrangler login            # first time only
 npm install
-npm run deploy                # = npm run build && wrangler deploy -c wrangler.jsonc
+VITE_API_URL=https://<your-backend-origin> npm run deploy
+                              # = npm run build && wrangler deploy -c wrangler.jsonc
 ```
 
-Worker lands at `https://trading.rufflocrm.workers.dev` — SPA, live markets, registration, sign-in, wallet, order board and every admin / super admin control command all live there.
+The Worker lands at `https://trading.rufflocrm.workers.dev` serving the SPA (all page routes, deep links). Every `/api/*` call goes to the backend origin from `VITE_API_URL` (set it at build time — the Worker itself cannot proxy anything).
 
-Verify the deployment (it must include the Worker script, not just the built SPA):
+Verify the deployment is the static-only contract:
 
 ```bash
 npm run verify:deployed                      # defaults to https://trading.rufflocrm.workers.dev
 node scripts/verify-deployed-worker.mjs https://<worker>.<subdomain>.workers.dev
-curl https://trading.rufflocrm.workers.dev/api/health   # -> {"ok":true,...}
+curl https://trading.rufflocrm.workers.dev/api/health   # -> index.html (SPA fallback), NOT JSON
+curl -X POST https://trading.rufflocrm.workers.dev/api/auth/register   # -> 405, NOT a register handler
 ```
 
-**If `POST /api/auth/register` returns `405 Method Not Allowed`** (or `/api/health` returns HTML instead of JSON), the live deployment contains only the built SPA — the Worker script was never uploaded, so `/api/*` falls through to the static-asset layer. Fix it by deploying with a config that sets `main` (`npm run deploy`), or in Workers Builds set the deploy command to `npx wrangler deploy -c wrangler.jsonc`, and make sure the build is a **production** build (non-production branches run `npx wrangler versions upload`, which creates a preview version and leaves production untouched).
+**If `/api/health` returns JSON or `POST /api/auth/register` is answered** (anything but `405`), an API handler is (still / again) deployed on this Worker — that must not happen: the Worker must be static only, with the API owned by `server.mjs` on its own host. Make sure `wrangler.jsonc` has no `main` entry point and redeploy (`npm run deploy`). Also make sure the build is a **production** build (non-production branches run `npx wrangler versions upload`, which creates a preview version and leaves production untouched).
 
-1. **Codes**: set `ADMIN_CODES` and `SUPER_ADMIN_CODES` in the dashboard (**Settings → Variables & Secrets**) or in `trading-worker/wrangler.jsonc` — defaults are public in the repo.
-2. **Persistence (optional)**: without it the worker runs on an in-memory store (accounts reset on each deploy). For persistence:
-   ```bash
-   npx wrangler kv namespace create USERS
-   # paste the printed id into wrangler.jsonc under
-   # kv_namespaces -> binding "STORE", then re-deploy
-   ```
-3. **Admin commands**: drive everything from the backend at the worker URL — see [`ADMIN-CONTROL.md`](ADMIN-CONTROL.md) and [`api.json`](api.json).
-4. **Optional passthrough**: `BACKEND` (service binding) or `BACKEND_ORIGIN` still work for paths the worker does not implement.
-5. **Auto-deploy on push** (optional): Workers & Pages → `trading` → Settings → Builds → Connect repo, build command `npm run build`, deploy command `npx wrangler deploy -c wrangler.jsonc`, production branch `main`. The dashboard Worker name must equal the `name` in `wrangler.jsonc` (`trading`). A manual, verified alternative ships in `scripts/github-workflows/deploy-worker.yml` — copy it to `.github/workflows/deploy-worker.yml` to enable it (Actions → Deploy Worker → Run workflow; needs `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` secrets).
+1. **Codes**: `ADMIN_CODES` / `SUPER_ADMIN_CODES` belong to the **backend** environment now (not the Worker — the Worker has no variables).
+2. **Persistence**: the backend stores users at `server/data/users.json`; mount a persistent disk on the backend host.
+3. **Admin commands**: drive everything from the backend origin — see [`ADMIN-CONTROL.md`](ADMIN-CONTROL.md) and [`api.json`](api.json).
+4. **Auto-deploy on push** (optional): Workers & Pages → `trading` → Settings → Builds → Connect repo, build command `npm run build`, deploy command `npx wrangler deploy -c wrangler.jsonc`, production branch `main`. The dashboard Worker name must equal the `name` in `wrangler.jsonc` (`trading`). A manual, verified alternative ships in `scripts/github-workflows/deploy-worker.yml` — copy it to `.github/workflows/deploy-worker.yml` to enable it (Actions → Deploy Worker → Run workflow; needs `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` secrets).
 
 ### Local development
 
@@ -238,17 +231,24 @@ npm test              # 20 backend tests
 ## 7. Post-deploy verification checklist
 
 ```bash
-BASE="https://your-deployed-url"
+WORKER="https://trading.rufflocrm.workers.dev"   # static SPA
+API="https://<your-backend-origin>"              # server.mjs
 
-curl $BASE/api/health                 # {"ok":true,...}
-curl $BASE/api/markets                # 32 assets, "source":"coinbase" (or "fallback")
-curl "$BASE/api/market/klines?symbol=BTC&interval=1m"
-curl -X POST $BASE/api/auth/register -H 'content-type: application/json' \
+# Static Worker: SPA up, deep links work, NO API handler
+curl $WORKER/                          # index.html
+curl $WORKER/auth/register             # index.html (SPA fallback)
+npm run verify:deployed $WORKER        # all PASS
+
+# Backend: API live
+curl $API/api/health                   # {"ok":true,...}
+curl $API/api/markets                  # 32 assets, "source":"coinbase" (or "fallback")
+curl "$API/api/market/klines?symbol=BTC&interval=1m"
+curl -X POST $API/api/auth/register -H 'content-type: application/json' \
   -d '{"name":"Test","email":"t@t.co","phone":"+91","preferredCurrency":"INR"}'
-curl "$BASE/api/auth/me?email=t@t.co"
+curl "$API/api/auth/me?email=t@t.co"
 ```
 
-Then in a browser: `/login` → register → `/dashboard` shows ₹0.00 + 10,000 demo → `/trading`, `/instant-order`, `/deposit`, `/profile`, `/admin/users` with your admin code.
+Then in a browser (served by the Worker, talking to the API): `/login` → register → `/dashboard` shows ₹0.00 + 10,000 demo → `/trading`, `/instant-order`, `/deposit`, `/profile`, `/admin/users` with your admin code.
 
 ---
 
